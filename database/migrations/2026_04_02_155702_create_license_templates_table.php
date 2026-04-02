@@ -1,0 +1,40 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('license_templates', function (Blueprint $table) {
+            $table->id();
+            $table->ulid()->unique();
+            $table->foreignId('license_scope_id')->nullable()->constrained('license_scopes')->nullOnDelete();
+            $table->string('name');
+            $table->string('slug')->unique();
+            $table->integer('tier_level')->default(1);
+            $table->foreignId('parent_template_id')->nullable()->constrained('license_templates')->nullOnDelete();
+            $table->json('base_configuration')->nullable();
+            $table->json('features')->nullable();
+            $table->json('entitlements')->nullable();
+            $table->boolean('is_active')->default(true);
+            $table->boolean('supports_trial')->nullable();
+            $table->unsignedInteger('trial_duration_days')->nullable();
+            $table->boolean('has_grace_period')->nullable();
+            $table->unsignedInteger('grace_period_days')->nullable();
+            $table->unsignedInteger('license_duration_days')->nullable();
+            $table->json('meta')->nullable();
+            $table->timestamps();
+
+            $table->index(['license_scope_id', 'tier_level']);
+            $table->index(['license_scope_id', 'is_active']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('license_templates');
+    }
+};
