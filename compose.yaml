@@ -3,7 +3,7 @@ services:
         labels:
             - dev.orbstack.domains=wilson-e-book-admin.local
         build:
-            context: './vendor/laravel/sail/runtimes/8.5'
+            context: './docker/8.5'
             dockerfile: Dockerfile
             args:
                 WWWGROUP: '${WWWGROUP}'
