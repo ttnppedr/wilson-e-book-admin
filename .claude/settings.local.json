@@ -2,5 +2,20 @@
   "enabledMcpjsonServers": [
     "laravel-boost"
   ],
-  "enableAllProjectMcpServers": true
+  "enableAllProjectMcpServers": true,
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_response.filePath // .tool_input.file_path' | { read -r f; [[ \"$f\" == *.php ]] && ./vendor/bin/pint --parallel --max-processes=4 \"$f\"; } 2>/dev/null || true",
+            "timeout": 30,
+            "statusMessage": "Running Pint formatter..."
+          }
+        ]
+      }
+    ]
+  }
 }
