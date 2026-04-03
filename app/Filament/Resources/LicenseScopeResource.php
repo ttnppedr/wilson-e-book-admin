@@ -5,10 +5,15 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\LicenseScopeResource\Pages;
 use App\Filament\Resources\LicenseScopeResource\RelationManagers\LicensesRelationManager;
 use App\Filament\Resources\LicenseScopeResource\RelationManagers\TemplatesRelationManager;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\EditAction;
+use Filament\Actions\ViewAction;
 use Filament\Forms;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
+use Filament\Tables;
+use Filament\Tables\Table;
 use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseScopeResource as BaseLicenseScopeResource;
 use LucaLongo\Licensing\Models\LicenseScope;
 
@@ -71,6 +76,55 @@ class LicenseScopeResource extends BaseLicenseScopeResource
                             ->helperText(__('laravel-licensing-filament-manager::license-scope.fields.default_duration_days_help')),
                     ]),
             ]);
+    }
+
+    public static function table(Table $table): Table
+    {
+        return $table
+            ->columns([
+                Tables\Columns\IconColumn::make('is_active')
+                    ->label(__('laravel-licensing-filament-manager::license-scope.fields.is_active'))
+                    ->boolean()
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('name')
+                    ->label(__('laravel-licensing-filament-manager::license-scope.fields.name'))
+                    ->description(fn ($record) => $record->identifier)
+                    ->searchable()
+                    ->sortable()
+                    ->weight('bold'),
+
+                Tables\Columns\TextColumn::make('slug')
+                    ->label(__('laravel-licensing-filament-manager::license-scope.fields.slug'))
+                    ->searchable()
+                    ->sortable()
+                    ->copyable()
+                    ->badge()
+                    ->color('gray'),
+
+                Tables\Columns\TextColumn::make('licenses_count')
+                    ->label(__('laravel-licensing-filament-manager::license-scope.fields.licenses_count'))
+                    ->counts('licenses')
+                    ->sortable()
+                    ->badge()
+                    ->color('info'),
+
+                Tables\Columns\TextColumn::make('active_licenses_count')
+                    ->label(__('laravel-licensing-filament-manager::license-scope.fields.active_licenses_count'))
+                    ->state(fn (LicenseScope $record) => $record->licenses()->where('status', 'active')->count())
+                    ->badge()
+                    ->color('success'),
+            ])
+            ->recordActions([
+                ViewAction::make()
+                    ->label(__('laravel-licensing-filament-manager::common.actions.view')),
+                EditAction::make()
+                    ->label(__('laravel-licensing-filament-manager::common.actions.edit')),
+                DeleteAction::make()
+                    ->label(__('laravel-licensing-filament-manager::common.actions.delete')),
+            ])
+            ->toolbarActions([])
+            ->defaultSort('created_at', 'desc');
     }
 
     public static function getRelations(): array

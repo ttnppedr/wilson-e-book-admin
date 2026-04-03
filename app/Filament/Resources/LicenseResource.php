@@ -5,9 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\LicenseResource\Pages;
 use App\Filament\Resources\LicenseResource\RelationManagers\UsagesRelationManager;
 use Filament\Actions\Action;
-use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms;
@@ -294,12 +292,7 @@ class LicenseResource extends BaseLicenseResource
                     ->label(__('laravel-licensing-filament-manager::common.actions.delete'))
                     ->visible(fn (License $record) => $record->status === LicenseStatus::Pending),
             ])
-            ->toolbarActions([
-                BulkActionGroup::make([
-                    DeleteBulkAction::make()
-                        ->label(__('laravel-licensing-filament-manager::common.actions.delete_selected')),
-                ]),
-            ])
+            ->toolbarActions([])
             ->defaultSort('created_at', 'desc');
     }
 

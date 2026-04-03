@@ -11,6 +11,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseUsageResource as BaseLicenseUsageResource;
+use LucaLongo\Licensing\Models\License;
 use LucaLongo\Licensing\Models\LicenseUsage;
 
 /**
@@ -106,10 +107,18 @@ class LicenseUsageResource extends BaseLicenseUsageResource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('license.uid')
-                    ->label(__('laravel-licensing-filament-manager::license.fields.id'))
+                Tables\Columns\TextColumn::make('license_id')
+                    ->label('授權碼')
+                    ->formatStateUsing(function ($state) {
+                        $license = License::find($state);
+                        $key = $license?->retrieveKey();
+                        if (! $key) {
+                            return $license?->uid ?? '—';
+                        }
+
+                        return implode('-', str_split(strtoupper($key), 5));
+                    })
                     ->copyable()
-                    ->limit(10)
                     ->searchable()
                     ->sortable(),
                 ...static::usageColumns(),
