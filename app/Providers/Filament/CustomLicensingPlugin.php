@@ -14,4 +14,9 @@ class CustomLicensingPlugin extends LaravelLicensingFilamentManagerPlugin
     {
         return [];
     }
+
+    protected function getPages(): array
+    {
+        return [];
+    }
 }
