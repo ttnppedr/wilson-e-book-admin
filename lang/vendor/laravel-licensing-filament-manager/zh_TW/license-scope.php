@@ -52,6 +52,7 @@ return [
     'relations' => [
         'licenses' => '授權',
         'signing_keys' => '簽章金鑰',
+        'templates' => '授權範本',
     ],
 
     'perpetual' => '永久',
