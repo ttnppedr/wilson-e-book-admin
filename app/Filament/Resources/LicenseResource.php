@@ -4,7 +4,6 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\LicenseResource\Pages;
 use App\Filament\Resources\LicenseResource\RelationManagers\UsagesRelationManager;
-use Carbon\Carbon;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
@@ -77,22 +76,16 @@ class LicenseResource extends BaseLicenseResource
 
                                 return $query->pluck('name', 'id')->toArray();
                             })
-                            ->afterStateUpdated(function ($state, callable $set, callable $get): void {
+                            ->afterStateUpdated(function ($state, callable $set): void {
                                 if (! $state) {
-                                    $set('expires_at', null);
-
                                     return;
                                 }
                                 $templateModel = config('licensing.models.license_template');
                                 $template = $templateModel::find($state);
                                 if (! $template || ! $template->license_duration_days) {
-                                    $set('expires_at', null);
-
                                     return;
                                 }
-                                $activatedAt = $get('activated_at') ?? now();
-                                $expiresAt = Carbon::parse($activatedAt)->addDays($template->license_duration_days);
-                                $set('expires_at', $expiresAt->format('Y-m-d H:i:s'));
+                                $set('expires_at', now()->addDays($template->license_duration_days)->format('Y-m-d H:i:s'));
                             })
                             ->helperText(__('laravel-licensing-filament-manager::license.help.template')),
 
@@ -112,27 +105,14 @@ class LicenseResource extends BaseLicenseResource
                                 Forms\Components\DateTimePicker::make('activated_at')
                                     ->label(__('laravel-licensing-filament-manager::license.fields.activated_at'))
                                     ->displayFormat('d/m/Y H:i')
-                                    ->default(now())
-                                    ->live()
-                                    ->afterStateUpdated(function ($state, callable $set, callable $get): void {
-                                        $templateId = $get('template_id');
-                                        if (! $templateId || ! $state) {
-                                            return;
-                                        }
-                                        $templateModel = config('licensing.models.license_template');
-                                        $template = $templateModel::find($templateId);
-                                        if (! $template || ! $template->license_duration_days) {
-                                            return;
-                                        }
-                                        $expiresAt = Carbon::parse($state)->addDays($template->license_duration_days);
-                                        $set('expires_at', $expiresAt->format('Y-m-d H:i:s'));
-                                    }),
+                                    ->disabled()
+                                    ->hiddenOn('create'),
 
                                 Forms\Components\DateTimePicker::make('expires_at')
                                     ->label(__('laravel-licensing-filament-manager::license.fields.expires_at'))
                                     ->displayFormat('d/m/Y H:i')
-                                    ->nullable()
-                                    ->helperText(__('laravel-licensing-filament-manager::license.help.expires_at')),
+                                    ->required()
+                                    ->helperText('選擇範本後自動帶入，可手動調整。不論何時啟用，到期時間固定不變。'),
                             ])
                             ->columns(),
 
