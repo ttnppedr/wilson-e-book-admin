@@ -1,10 +1,10 @@
 <?php
 
+use App\Models\LicenseTemplate;
 use App\Services\LicenseKeyGenerator;
 use LucaLongo\Licensing\Models\License;
 use LucaLongo\Licensing\Models\LicenseRenewal;
 use LucaLongo\Licensing\Models\LicenseScope;
-use LucaLongo\Licensing\Models\LicenseTemplate;
 use LucaLongo\Licensing\Models\LicenseUsage;
 use LucaLongo\Licensing\Models\LicensingAuditLog;
 use LucaLongo\Licensing\Models\LicensingKey;
@@ -13,9 +13,6 @@ use LucaLongo\Licensing\Services\EncryptedLicenseKeyRetriever;
 use LucaLongo\Licensing\Services\PasetoTokenService;
 
 return [
-    // 素材加密金鑰，必須與 App 建置 APK 時加密素材所用的 key 一致
-    'content_encryption_key' => env('CONTENT_ENCRYPTION_KEY'),
-
     'key_salt' => env('LICENSING_KEY_SALT', env('APP_KEY')),
 
     'models' => [
