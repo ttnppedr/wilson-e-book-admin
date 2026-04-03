@@ -3,9 +3,17 @@
 namespace App\Filament\Resources\LicenseUsageResource\Pages;
 
 use App\Filament\Resources\LicenseUsageResource;
-use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseUsageResource\Pages\EditLicenseUsage as BaseEditLicenseUsage;
+use Filament\Actions\ViewAction;
+use Filament\Resources\Pages\EditRecord;
 
-class EditLicenseUsage extends BaseEditLicenseUsage
+class EditLicenseUsage extends EditRecord
 {
     protected static string $resource = LicenseUsageResource::class;
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            ViewAction::make(),
+        ];
+    }
 }

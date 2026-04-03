@@ -2,11 +2,11 @@
 
 namespace App\Filament\Resources\LicenseResource\RelationManagers;
 
+use App\Filament\Resources\LicenseUsageResource;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms;
 use Filament\Schemas\Schema;
-use Filament\Tables;
 use Filament\Tables\Table;
 use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseResource\RelationManagers\UsagesRelationManager as BaseUsagesRelationManager;
 
@@ -31,33 +31,7 @@ class UsagesRelationManager extends BaseUsagesRelationManager
     {
         return $table
             ->recordTitleAttribute('usage_fingerprint')
-            ->columns([
-                Tables\Columns\TextColumn::make('usage_fingerprint')
-                    ->label(__('laravel-licensing-filament-manager::license-usage.fields.usage_fingerprint'))
-                    ->searchable()
-                    ->copyable()
-                    ->limit(20)
-                    ->weight('bold'),
-
-                Tables\Columns\TextColumn::make('name')
-                    ->label(__('laravel-licensing-filament-manager::license-usage.fields.name'))
-                    ->searchable()
-                    ->placeholder('—'),
-
-                Tables\Columns\TextColumn::make('ip')
-                    ->label(__('laravel-licensing-filament-manager::license-usage.fields.ip'))
-                    ->searchable(),
-
-                Tables\Columns\TextColumn::make('registered_at')
-                    ->label(__('laravel-licensing-filament-manager::license-usage.fields.registered_at'))
-                    ->dateTime('d/m/Y H:i')
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('last_seen_at')
-                    ->label(__('laravel-licensing-filament-manager::license-usage.fields.last_seen_at'))
-                    ->dateTime('d/m/Y H:i')
-                    ->sortable(),
-            ])
+            ->columns(LicenseUsageResource::usageColumns())
             ->recordActions([
                 ViewAction::make()
                     ->label(__('laravel-licensing-filament-manager::common.actions.view')),
