@@ -2,12 +2,14 @@
 
 namespace App\Providers;
 
+use App\Observers\LicenseObserver;
 use Filament\Forms\Components\Select;
 use Filament\Tables\Columns\TextColumn;
 use Illuminate\Support\ServiceProvider;
 use LucaLongo\Licensing\Enums\KeyStatus;
 use LucaLongo\Licensing\Enums\LicenseStatus;
 use LucaLongo\Licensing\Enums\UsageStatus;
+use LucaLongo\Licensing\Models\License;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -39,6 +41,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        License::observe(LicenseObserver::class);
         $this->configureEnumLabels();
     }
 

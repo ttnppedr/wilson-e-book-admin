@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\LicenseKeyGenerator;
 use LucaLongo\Licensing\Models\License;
 use LucaLongo\Licensing\Models\LicenseRenewal;
 use LucaLongo\Licensing\Models\LicenseScope;
@@ -7,12 +8,14 @@ use LucaLongo\Licensing\Models\LicenseTemplate;
 use LucaLongo\Licensing\Models\LicenseUsage;
 use LucaLongo\Licensing\Models\LicensingAuditLog;
 use LucaLongo\Licensing\Models\LicensingKey;
-use LucaLongo\Licensing\Services\EncryptedLicenseKeyGenerator;
 use LucaLongo\Licensing\Services\EncryptedLicenseKeyRegenerator;
 use LucaLongo\Licensing\Services\EncryptedLicenseKeyRetriever;
 use LucaLongo\Licensing\Services\PasetoTokenService;
 
 return [
+    // 素材加密金鑰，必須與 App 建置 APK 時加密素材所用的 key 一致
+    'content_encryption_key' => env('CONTENT_ENCRYPTION_KEY'),
+
     'key_salt' => env('LICENSING_KEY_SALT', env('APP_KEY')),
 
     'models' => [
@@ -26,7 +29,7 @@ return [
     ],
 
     'services' => [
-        'key_generator' => EncryptedLicenseKeyGenerator::class,
+        'key_generator' => LicenseKeyGenerator::class,
         'key_retriever' => EncryptedLicenseKeyRetriever::class,
         'key_regenerator' => EncryptedLicenseKeyRegenerator::class,
     ],
@@ -71,8 +74,8 @@ return [
         'enabled' => true,
         'service' => PasetoTokenService::class,
         'issuer' => 'laravel-licensing',
-        'ttl_days' => 7,
-        'force_online_after_days' => 14,
+        'ttl_days' => 7, // fallback，實際由自訂 Controller 動態覆寫為授權剩餘天數
+        'force_online_after_days' => 9999, // 不強制上線，完全離線使用
         'clock_skew_seconds' => 60,
     ],
 
