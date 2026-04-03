@@ -3,14 +3,13 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\LicenseScopeResource\Pages;
+use App\Filament\Resources\LicenseScopeResource\RelationManagers\LicensesRelationManager;
 use App\Filament\Resources\LicenseScopeResource\RelationManagers\TemplatesRelationManager;
 use Filament\Forms;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseScopeResource as BaseLicenseScopeResource;
-use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseScopeResource\RelationManagers\LicensesRelationManager;
-use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseScopeResource\RelationManagers\SigningKeysRelationManager;
 use LucaLongo\Licensing\Models\LicenseScope;
 
 /**
@@ -78,7 +77,6 @@ class LicenseScopeResource extends BaseLicenseScopeResource
     {
         return [
             TemplatesRelationManager::class,
-            SigningKeysRelationManager::class,
             LicensesRelationManager::class,
         ];
     }
