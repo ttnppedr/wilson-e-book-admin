@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\LicenseScopeResource\RelationManagers;
 
 use App\Filament\Resources\LicenseResource;
+use Filament\Actions\CreateAction;
 use Filament\Schemas\Schema;
 use Filament\Tables\Table;
 use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseScopeResource\RelationManagers\LicensesRelationManager as BaseLicensesRelationManager;
@@ -32,7 +33,11 @@ class LicensesRelationManager extends BaseLicensesRelationManager
 
         return $configured
             ->columns($columns)
-            ->filters($filters);
+            ->filters($filters)
+            ->headerActions([
+                CreateAction::make()
+                    ->url(fn () => LicenseResource::getUrl('create')),
+            ]);
     }
 
     public static function getTitle($ownerRecord, $pageClass): string

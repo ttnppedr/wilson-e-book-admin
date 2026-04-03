@@ -70,25 +70,6 @@ class TemplatesRelationManager extends BaseTemplatesRelationManager
                             ->helperText(__('laravel-licensing-filament-manager::license-template.help.license_duration_days')),
                     ]),
 
-                Section::make(__('laravel-licensing-filament-manager::license-template.form.configuration'))
-                    ->schema([
-                        Forms\Components\KeyValue::make('features')
-                            ->label(__('laravel-licensing-filament-manager::license-template.fields.features'))
-                            ->keyLabel(__('laravel-licensing-filament-manager::common.key'))
-                            ->valueLabel(__('laravel-licensing-filament-manager::common.value'))
-                            ->helperText(__('laravel-licensing-filament-manager::license-template.help.features'))
-                            ->formatStateUsing(fn ($state) => $this->formatArrayState($state))
-                            ->dehydrateStateUsing(fn ($state) => $this->sanitizeArrayValue($state)),
-
-                        Forms\Components\KeyValue::make('entitlements')
-                            ->label(__('laravel-licensing-filament-manager::license-template.fields.entitlements'))
-                            ->keyLabel(__('laravel-licensing-filament-manager::common.key'))
-                            ->valueLabel(__('laravel-licensing-filament-manager::common.value'))
-                            ->helperText(__('laravel-licensing-filament-manager::license-template.help.entitlements'))
-                            ->formatStateUsing(fn ($state) => $this->formatArrayState($state))
-                            ->dehydrateStateUsing(fn ($state) => $this->sanitizeArrayValue($state)),
-                    ])
-                    ->columns(1),
             ]);
     }
 
@@ -144,7 +125,8 @@ class TemplatesRelationManager extends BaseTemplatesRelationManager
                         return $record->refresh();
                     }),
                 DeleteAction::make()
-                    ->label(__('laravel-licensing-filament-manager::common.actions.delete')),
+                    ->label(__('laravel-licensing-filament-manager::common.actions.delete'))
+                    ->visible(fn (LicenseTemplate $record) => \LucaLongo\Licensing\Models\License::where('template_id', $record->getKey())->doesntExist()),
             ]);
     }
 }
