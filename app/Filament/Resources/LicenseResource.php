@@ -26,13 +26,14 @@ use LucaLongo\Licensing\Models\LicenseScope;
 
 /**
  * MVP 精簡版 LicenseResource。
- * 移除 licensable、uid、meta、手動 status 選擇。
- * 移除 Renewals/Transfers/Trials RelationManagers。
+ * 啟用由 App API 自動處理，已啟用的授權限制編輯範圍。
  */
 class LicenseResource extends BaseLicenseResource
 {
     public static function form(Schema $schema): Schema
     {
+        $isActivated = fn (?License $record): bool => $record !== null && $record->status !== LicenseStatus::Pending;
+
         return $schema
             ->schema([
                 Section::make(__('laravel-licensing-filament-manager::license.form.basic_information'))
@@ -45,6 +46,7 @@ class LicenseResource extends BaseLicenseResource
                             ->preload()
                             ->required()
                             ->live()
+                            ->disabled(fn (?License $record) => $isActivated($record))
                             ->default(function ($livewire) {
                                 if (method_exists($livewire, 'getOwnerRecord')) {
                                     return $livewire->getOwnerRecord()->id;
@@ -60,6 +62,7 @@ class LicenseResource extends BaseLicenseResource
                             ->searchable()
                             ->required()
                             ->live()
+                            ->disabled(fn (?License $record) => $isActivated($record))
                             ->options(function (callable $get, ?License $record) {
                                 $scopeId = $get('license_scope_id') ?? $record?->license_scope_id;
                                 if (! $scopeId) {
@@ -91,7 +94,24 @@ class LicenseResource extends BaseLicenseResource
 
                         Forms\Components\Select::make('status')
                             ->label(__('laravel-licensing-filament-manager::license.fields.status'))
-                            ->options(LicenseStatus::class)
+                            ->options(function (?License $record) {
+                                // 移除寬限期選項
+                                $options = collect(LicenseStatus::cases())
+                                    ->filter(fn (LicenseStatus $s) => $s !== LicenseStatus::Grace)
+                                    ->mapWithKeys(fn (LicenseStatus $s) => [$s->value => $s->name]);
+
+                                if (! $record || $record->status === LicenseStatus::Pending) {
+                                    return $options->toArray();
+                                }
+
+                                // 已啟用：不能改回待啟用，不能手動設為已到期（自動判斷）
+                                return $options
+                                    ->filter(fn ($label, $value) => ! in_array($value, [
+                                        LicenseStatus::Pending->value,
+                                        LicenseStatus::Expired->value,
+                                    ]))
+                                    ->toArray();
+                            })
                             ->required()
                             ->default(LicenseStatus::Pending->value)
                             ->hiddenOn('create'),
@@ -112,6 +132,7 @@ class LicenseResource extends BaseLicenseResource
                                     ->label(__('laravel-licensing-filament-manager::license.fields.expires_at'))
                                     ->displayFormat('d/m/Y H:i')
                                     ->required()
+                                    ->disabled(fn (?License $record) => $isActivated($record))
                                     ->helperText('選擇範本後自動帶入，可手動調整。不論何時啟用，到期時間固定不變。'),
                             ])
                             ->columns(),
@@ -174,7 +195,6 @@ class LicenseResource extends BaseLicenseResource
                     ->colors([
                         'warning' => LicenseStatus::Pending,
                         'success' => LicenseStatus::Active,
-                        'info' => LicenseStatus::Grace,
                         'danger' => [LicenseStatus::Expired, LicenseStatus::Suspended, LicenseStatus::Cancelled],
                     ]),
 
@@ -240,20 +260,6 @@ class LicenseResource extends BaseLicenseResource
                 EditAction::make()
                     ->label(__('laravel-licensing-filament-manager::common.actions.edit')),
 
-                Action::make('activate')
-                    ->label(__('laravel-licensing-filament-manager::license.actions.activate'))
-                    ->icon('heroicon-o-play')
-                    ->color('success')
-                    ->requiresConfirmation()
-                    ->visible(fn (License $record) => $record->status === LicenseStatus::Pending)
-                    ->action(function (License $record): void {
-                        $record->activate();
-                        Notification::make()
-                            ->title(__('laravel-licensing-filament-manager::license.notifications.activated'))
-                            ->success()
-                            ->send();
-                    }),
-
                 Action::make('suspend')
                     ->label(__('laravel-licensing-filament-manager::license.actions.suspend'))
                     ->icon('heroicon-o-pause')
@@ -285,7 +291,8 @@ class LicenseResource extends BaseLicenseResource
                     }),
 
                 DeleteAction::make()
-                    ->label(__('laravel-licensing-filament-manager::common.actions.delete')),
+                    ->label(__('laravel-licensing-filament-manager::common.actions.delete'))
+                    ->visible(fn (License $record) => $record->status === LicenseStatus::Pending),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
