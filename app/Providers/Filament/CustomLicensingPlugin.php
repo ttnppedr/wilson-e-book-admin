@@ -3,15 +3,16 @@
 namespace App\Providers\Filament;
 
 use App\Filament\Resources\LicenseScopeResource;
+use App\Filament\Resources\LicenseUsageResource;
 use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseResource;
-use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseUsageResource;
 use LucaLongo\LaravelLicensingFilamentManager\LaravelLicensingFilamentManagerPlugin;
 
 /**
- * 移除 vendor 的 LicenseScopeResource，改由 App\Filament\Resources\LicenseScopeResource
- * 透過 AdminPanelProvider::discoverResources() 自動載入。
+ * 移除 vendor 的 LicenseScopeResource 與 LicenseUsageResource，
+ * 改由 App\Filament\Resources 下的自訂版本透過 discoverResources() 自動載入。
  *
  * @see LicenseScopeResource
+ * @see LicenseUsageResource
  */
 class CustomLicensingPlugin extends LaravelLicensingFilamentManagerPlugin
 {
@@ -19,7 +20,6 @@ class CustomLicensingPlugin extends LaravelLicensingFilamentManagerPlugin
     {
         return [
             LicenseResource::class,
-            LicenseUsageResource::class,
         ];
     }
 }
