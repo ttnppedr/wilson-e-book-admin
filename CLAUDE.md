@@ -1,3 +1,63 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## 語言規則
+
+- 所有回應內容、commit 訊息、PR 描述都必須使用**繁體中文台灣用語**
+- 技術術語和程式碼識別碼維持原文
+
+## 專案概述
+
+Wilson 電子書管理後台，基於 Laravel 12 + Filament v4 建構，整合 `masterix21/laravel-licensing` 授權管理系統。主要功能為管理電子書產品的軟體授權（License Scope → License → License Usage）。
+
+## 常用指令
+
+```bash
+# 啟動開發環境
+vendor/bin/sail up -d
+
+# 停止服務
+vendor/bin/sail stop
+
+# 執行資料庫遷移
+vendor/bin/sail artisan migrate
+
+# 執行測試
+vendor/bin/sail artisan test --compact
+
+# 執行單一測試
+vendor/bin/sail artisan test --compact --filter=testName
+
+# 程式碼格式化（整個專案）
+vendor/bin/sail bin pint --parallel --max-processes=4
+
+# 程式碼格式化（僅修改的檔案）
+vendor/bin/sail bin pint --dirty
+
+# 建立 Filament 管理員帳號
+vendor/bin/sail artisan make:filament-user --no-interaction --name=admin --email=admin@gmail.com --password=password
+
+# 前端建置
+vendor/bin/sail npm run build
+```
+
+## 架構
+
+- **管理面板**: Filament v4，路徑 `/admin`，設定在 `app/Providers/Filament/AdminPanelProvider.php`
+- **授權系統**: `masterix21/laravel-licensing` + `laravel-licensing-filament-manager`，包含授權範圍、授權、授權使用三層架構
+- **授權 enum 翻譯**: 在 `app/Providers/AppServiceProvider.php` 透過 `TextColumn::configureUsing` 和 `Select::configureUsing` 全域翻譯 LicenseStatus / UsageStatus / KeyStatus
+- **翻譯檔**: 套件有兩個翻譯 namespace（`laravel-licensing-filament-manager` 和 `licensing-filament-manager`），zh_TW 翻譯分別在 `lang/vendor/` 下對應的兩個目錄
+- **時區**: 顯示用 `Asia/Taipei`（GMT+8），資料庫儲存為 UTC
+- **Docker**: Sail 使用自訂 Dockerfile（`docker/8.5/Dockerfile`），已加入 `php8.5-gmp` 擴充套件
+- **Pint Hook**: 編輯 PHP 檔案後自動透過 PostToolUse hook 執行 Pint 格式化
+
+## 注意事項
+
+- 本機無 PHP，所有 PHP/Artisan/Composer 指令必須透過 `vendor/bin/sail` 執行
+- 授權相關 migration 已手動調整順序（templates 在 licenses 之前）並修正了 MySQL index 名稱過長的問題
+- `config/licensing-filament-manager.php` 的 `licensed_entities` 尚未設定
+
 <laravel-boost-guidelines>
 === foundation rules ===
 
