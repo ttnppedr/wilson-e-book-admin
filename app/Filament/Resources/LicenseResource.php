@@ -278,10 +278,11 @@ class LicenseResource extends BaseLicenseResource
                     ->visible(fn (License $record) => $record->canRetrieveKey())
                     ->action(function (License $record): void {
                         $key = $record->retrieveKey();
+                        $formatted = $key ? implode('-', str_split(strtoupper($key), 5)) : null;
                         Notification::make()
                             ->title(__('laravel-licensing-filament-manager::license.notifications.key_retrieved'))
-                            ->body($key
-                                ? __('laravel-licensing-filament-manager::license.notifications.key_value', ['key' => $key])
+                            ->body($formatted
+                                ? __('laravel-licensing-filament-manager::license.notifications.key_value', ['key' => $formatted])
                                 : __('laravel-licensing-filament-manager::license.notifications.key_unavailable'))
                             ->success()
                             ->persistent()
