@@ -70,7 +70,7 @@ return [
     'offline_token' => [
         'enabled' => true,
         'service' => PasetoTokenService::class,
-        'issuer' => 'laravel-licensing',
+        'issuer' => env('LICENSING_TOKEN_ISSUER', 'wilson-ebook-admin'),
         'ttl_days' => 7, // fallback，實際由自訂 Controller 動態覆寫為授權剩餘天數
         'force_online_after_days' => 9999, // 不強制上線，完全離線使用
         'clock_skew_seconds' => 60,

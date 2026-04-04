@@ -5,6 +5,9 @@ namespace App\Providers;
 use App\Observers\LicenseObserver;
 use Filament\Forms\Components\Select;
 use Filament\Tables\Columns\TextColumn;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use LucaLongo\Licensing\Enums\KeyStatus;
 use LucaLongo\Licensing\Enums\LicenseStatus;
@@ -43,6 +46,8 @@ class AppServiceProvider extends ServiceProvider
     {
         License::observe(LicenseObserver::class);
         $this->configureEnumLabels();
+
+        RateLimiter::for('api', fn (Request $request) => Limit::perMinute(60)->by($request->ip()));
     }
 
     private function configureEnumLabels(): void
