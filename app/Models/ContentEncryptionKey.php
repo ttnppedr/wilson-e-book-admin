@@ -13,6 +13,10 @@ class ContentEncryptionKey extends Model
         'encrypted_key',
     ];
 
+    protected $hidden = [
+        'encrypted_key',
+    ];
+
     protected function casts(): array
     {
         return [
