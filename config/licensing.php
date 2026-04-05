@@ -2,6 +2,7 @@
 
 use App\Models\LicenseTemplate;
 use App\Services\LicenseKeyGenerator;
+use App\Services\WilsonPasetoTokenService;
 use LucaLongo\Licensing\Models\License;
 use LucaLongo\Licensing\Models\LicenseRenewal;
 use LucaLongo\Licensing\Models\LicenseScope;
@@ -10,7 +11,6 @@ use LucaLongo\Licensing\Models\LicensingAuditLog;
 use LucaLongo\Licensing\Models\LicensingKey;
 use LucaLongo\Licensing\Services\EncryptedLicenseKeyRegenerator;
 use LucaLongo\Licensing\Services\EncryptedLicenseKeyRetriever;
-use LucaLongo\Licensing\Services\PasetoTokenService;
 
 return [
     'key_salt' => env('LICENSING_KEY_SALT', env('APP_KEY')),
@@ -69,7 +69,7 @@ return [
 
     'offline_token' => [
         'enabled' => true,
-        'service' => PasetoTokenService::class,
+        'service' => WilsonPasetoTokenService::class,
         'issuer' => env('LICENSING_TOKEN_ISSUER', 'wilson-ebook-admin'),
         'ttl_days' => 7, // fallback，實際由自訂 Controller 動態覆寫為授權剩餘天數
         'force_online_after_days' => 9999, // 不強制上線，完全離線使用

@@ -1,0 +1,53 @@
+{
+    "algorithm": "X25519+HKDF-SHA256+XChaCha20-Poly1305",
+    "info_prefix": "wilson-content-key-wrap-v1",
+    "aad": "wilson-content-key-wrap-v1",
+    "generator": "PHP ext-sodium (wilson-e-book-admin)",
+    "vectors": [
+        {
+            "description": "\u57fa\u672c\u60c5\u5883\uff1ainteger license_id\uff0cBuild.ID \u683c\u5f0f fingerprint",
+            "license_id": "6",
+            "fingerprint": "TE1A.240213.009",
+            "client_private_key_b64": "RM62hp9w/ddGUx8pZ29DjKlcEqf63nghOwz5JaJZZZI=",
+            "client_public_key_b64": "011kYqKE8bNzQitr4ZWsMMgOtnolEegBbebT0jPbVz0=",
+            "server_private_key_b64": "KMZv/KqTVQifSZh0VviccEl6aJzcdjV46jjp+KZz5rs=",
+            "server_public_key_b64": "FxYPLGHF0YWMXtVWmZmZnPC7liPrC2fpexhYbxrMgEs=",
+            "raw_content_key_b64": "ERERERERERERERERERERERERERERERERERERERERERE=",
+            "salt_b64": "IiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiI=",
+            "nonce_b64": "MzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMz",
+            "aad": "wilson-content-key-wrap-v1",
+            "expected_wrap_key_b64": "kF8a721++0TAUZF+9ChedILNHGo/YhSeW/ecYlphAjI=",
+            "expected_ciphertext_b64": "SBxcwi2jui92ng7H3YySUGqEZPxtmX07FWl0b1bOfeiUrcTNqRVHXkgVMoscDZTE"
+        },
+        {
+            "description": "MAC \u683c\u5f0f fingerprint\uff08\u5e36\u5192\u865f\uff09",
+            "license_id": "12345",
+            "fingerprint": "AA:BB:CC:DD:EE:FF",
+            "client_private_key_b64": "qNObcvxp/dPQirASM5lqQLBkUUBQS3U3/CVabp0UHj4=",
+            "client_public_key_b64": "w5GFaqN5py1fCKuPmp8H4+N/wYP7F1eFSHrtfDjtWS4=",
+            "server_private_key_b64": "IaGcxZqEzYsMLWp4lG3xkdu8gGzWzB3yaGlv/YovkBE=",
+            "server_public_key_b64": "VidFqvjVmzdE18v9A/fBF4lFPUXlK/lrOS5l9p+DDFs=",
+            "raw_content_key_b64": "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=",
+            "salt_b64": "U1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1M=",
+            "nonce_b64": "ZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRk",
+            "aad": "wilson-content-key-wrap-v1",
+            "expected_wrap_key_b64": "fl+U6aHZtK2Dl9xYfasznhJQeWQkXFVXrNI6QFXpy5o=",
+            "expected_ciphertext_b64": "Soi+t0t84jq5+U8Jrq7pb6o69PYcSQXodbj5lkuhHLCJ8KBBRdtqQo/dM9uHsKUE"
+        },
+        {
+            "description": "\u5927 license_id\uff0c\u7d14\u5b57\u5143 fingerprint",
+            "license_id": "999999",
+            "fingerprint": "test-device-xyz",
+            "client_private_key_b64": "n332Tz7L4jYlJhHytN5CZBY2zUO71mR0gHkTQ/a4hwg=",
+            "client_public_key_b64": "6c6YGc03qGelMMFvV3oULfONWZIHeK7WzBdi5z022nY=",
+            "server_private_key_b64": "n6i+PWkSmFmS50pCndd+Iyvqrfy68sLbvIHKaX13J4k=",
+            "server_public_key_b64": "AJrzi89sZjtSNGiYuHNlYQhh5Zr7De5xdU9y1ruKV2w=",
+            "raw_content_key_b64": "enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6eno=",
+            "salt_b64": "i4uLi4uLi4uLi4uLi4uLi4uLi4uLi4uLi4uLi4uLi4s=",
+            "nonce_b64": "nJycnJycnJycnJycnJycnJycnJycnJyc",
+            "aad": "wilson-content-key-wrap-v1",
+            "expected_wrap_key_b64": "04VQnlR1YwP6wetyaqG4RHqn8yCVlpArZeJODaN7sFo=",
+            "expected_ciphertext_b64": "0yDI1+SndXAwKgaSnhXA8faY68wvoKgmLQVDtPgZex24SJZCDv9/gNlVbjQvMOVM"
+        }
+    ]
+}
