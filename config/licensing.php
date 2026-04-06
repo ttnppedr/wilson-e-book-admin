@@ -112,7 +112,7 @@ return [
     ],
 
     'api' => [
-        'enabled' => true,
+        'enabled' => false, // 路由由 routes/api.php 明確註冊，不使用 vendor 自動註冊
         'prefix' => 'api/licensing/v1',
         'middleware' => ['api', 'throttle:api'],
     ],

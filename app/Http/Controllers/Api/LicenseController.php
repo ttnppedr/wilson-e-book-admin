@@ -110,15 +110,19 @@ class LicenseController extends BaseLicenseController
     }
 
     /**
-     * 從 license.meta 抽出 32-byte binary content key。
+     * 透過 License → Template → ContentEncryptionKey 關聯取得 32-byte binary content key。
      *
-     * Admin 端儲存格式為 base64，此處解碼後回傳 raw bytes。
-     * 若欄位缺失或格式錯誤，回傳 null。
+     * ContentEncryptionKey.encrypted_key 透過 encrypted cast 解密後為 base64 字串，
+     * 解碼後回傳 raw bytes。不再從 licenses.meta 讀取明文副本。
      */
     protected function extractRawContentKey(License $license): ?string
     {
-        $meta = $license->meta ? (array) $license->meta : [];
-        $b64 = $meta['content_key'] ?? null;
+        $cek = $license->template?->contentEncryptionKey;
+        if (! $cek) {
+            return null;
+        }
+
+        $b64 = $cek->encrypted_key;
         if (! is_string($b64) || $b64 === '') {
             return null;
         }
