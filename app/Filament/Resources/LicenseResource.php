@@ -67,9 +67,9 @@ class LicenseResource extends BaseLicenseResource
                         Forms\Components\Select::make('status')
                             ->label(__('laravel-licensing-filament-manager::license.fields.status'))
                             ->options(function (?License $record) {
-                                // 移除寬限期選項
+                                // 移除寬限期和暫停選項
                                 $options = collect(LicenseStatus::cases())
-                                    ->filter(fn (LicenseStatus $s) => $s !== LicenseStatus::Grace)
+                                    ->filter(fn (LicenseStatus $s) => ! in_array($s, [LicenseStatus::Grace, LicenseStatus::Suspended]))
                                     ->mapWithKeys(fn (LicenseStatus $s) => [$s->value => $s->name]);
 
                                 if (! $record || $record->status === LicenseStatus::Pending) {
@@ -224,20 +224,6 @@ class LicenseResource extends BaseLicenseResource
 
                 EditAction::make()
                     ->label(__('laravel-licensing-filament-manager::common.actions.edit')),
-
-                Action::make('suspend')
-                    ->label(__('laravel-licensing-filament-manager::license.actions.suspend'))
-                    ->icon('heroicon-o-pause')
-                    ->color('warning')
-                    ->requiresConfirmation()
-                    ->visible(fn (License $record) => $record->status === LicenseStatus::Active)
-                    ->action(function (License $record): void {
-                        $record->suspend();
-                        Notification::make()
-                            ->title(__('laravel-licensing-filament-manager::license.notifications.suspended'))
-                            ->warning()
-                            ->send();
-                    }),
 
                 Action::make('show_key')
                     ->label(__('laravel-licensing-filament-manager::license.actions.show_key'))
