@@ -4,6 +4,7 @@ namespace App\Filament\Resources\LicenseResource\Pages;
 
 use App\Filament\Resources\LicenseResource;
 use App\Models\LicenseScope;
+use App\Services\LicenseKeyGenerator;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 use LucaLongo\Licensing\Models\License;
@@ -34,7 +35,7 @@ class CreateLicense extends CreateRecord
     protected function afterCreate(): void
     {
         if ($this->generatedKey) {
-            $formatted = implode('-', str_split(strtoupper($this->generatedKey), 5));
+            $formatted = LicenseKeyGenerator::format($this->generatedKey);
             Notification::make()
                 ->title(__('laravel-licensing-filament-manager::license.notifications.key_generated'))
                 ->body(__('laravel-licensing-filament-manager::license.notifications.key_value', ['key' => $formatted]))

@@ -25,6 +25,7 @@ return [
         'expires_at' => '到期時間',
         'meta' => '中繼資料',
         'key_visibility' => '金鑰取回',
+        'name' => '名稱',
     ],
 
     'actions' => [
@@ -45,6 +46,7 @@ return [
     'help' => [
         'expires_at' => '留空以根據範本預設值或範圍設定自動計算。',
         'template' => '範本控制最大使用次數、有效期、功能和權限。',
+        'name' => '標示此授權的使用者（例如：王小明）',
     ],
 
     'notifications' => [

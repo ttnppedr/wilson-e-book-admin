@@ -109,6 +109,14 @@ class LicenseController extends BaseLicenseController
         return $this->success($this->buildLicenseResponse($license->fresh(), $usage, $token));
     }
 
+    protected function formatLicense(License $license, bool $includeUsageSummary = true): array
+    {
+        $data = parent::formatLicense($license, $includeUsageSummary);
+        $data['name'] = $license->name;
+
+        return $data;
+    }
+
     /**
      * 透過 License → Scope → ContentEncryptionKey 關聯取得 32-byte binary content key。
      *

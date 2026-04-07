@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\LicenseResource\Pages;
 use App\Filament\Resources\LicenseResource\RelationManagers\UsagesRelationManager;
+use App\Services\LicenseKeyGenerator;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -64,6 +65,11 @@ class LicenseResource extends BaseLicenseResource
                                 $set('expires_at', now()->addDays($scope->default_duration_days)->format('Y-m-d H:i:s'));
                             }),
 
+                        Forms\Components\TextInput::make('name')
+                            ->label(__('laravel-licensing-filament-manager::license.fields.name'))
+                            ->maxLength(255)
+                            ->helperText(__('laravel-licensing-filament-manager::license.help.name')),
+
                         Forms\Components\Select::make('status')
                             ->label(__('laravel-licensing-filament-manager::license.fields.status'))
                             ->options(function (?License $record) {
@@ -109,19 +115,6 @@ class LicenseResource extends BaseLicenseResource
                             ])
                             ->columns(),
 
-                        Section::make(__('laravel-licensing-filament-manager::license.form.usage_statistics'))
-                            ->schema([
-                                TextEntry::make('usages_count')
-                                    ->label(__('laravel-licensing-filament-manager::license.fields.usages'))
-                                    ->state(fn (?License $record) => $record?->usages()->count() ?? 0),
-
-                                TextEntry::make('remaining_usages')
-                                    ->label(__('laravel-licensing-filament-manager::license.fields.remaining_usages'))
-                                    ->state(fn (?License $record) => $record ? max(0, $record->max_usages - $record->usages()->count()) : 0),
-                            ])
-                            ->columns(2)
-                            ->hiddenOn('create'),
-
                         Section::make(__('laravel-licensing-filament-manager::license.form.security'))
                             ->schema([
                                 TextEntry::make('retrieval_status')
@@ -146,12 +139,11 @@ class LicenseResource extends BaseLicenseResource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('id')
-                    ->label(__('laravel-licensing-filament-manager::license.fields.id'))
+                Tables\Columns\TextColumn::make('name')
+                    ->label(__('laravel-licensing-filament-manager::license.fields.name'))
                     ->searchable()
-                    ->copyable()
                     ->sortable()
-                    ->limit(8),
+                    ->placeholder('—'),
 
                 Tables\Columns\TextColumn::make('scope.name')
                     ->label(__('laravel-licensing-filament-manager::license.fields.license_scope'))
@@ -168,14 +160,6 @@ class LicenseResource extends BaseLicenseResource
                         'success' => LicenseStatus::Active,
                         'danger' => [LicenseStatus::Expired, LicenseStatus::Suspended, LicenseStatus::Cancelled],
                     ]),
-
-                Tables\Columns\TextColumn::make('usages_count')
-                    ->label(__('laravel-licensing-filament-manager::license.fields.usages'))
-                    ->counts('usages')
-                    ->formatStateUsing(fn (int $state, License $record) => "{$state}/{$record->max_usages}")
-                    ->sortable()
-                    ->badge()
-                    ->color(fn (int $state, License $record) => $state >= $record->max_usages ? 'danger' : 'success'),
 
                 Tables\Columns\TextColumn::make('activated_at')
                     ->label(__('laravel-licensing-filament-manager::license.fields.activated_at'))
@@ -231,7 +215,7 @@ class LicenseResource extends BaseLicenseResource
                     ->visible(fn (License $record) => $record->canRetrieveKey())
                     ->action(function (License $record): void {
                         $key = $record->retrieveKey();
-                        $formatted = $key ? implode('-', str_split(strtoupper($key), 5)) : null;
+                        $formatted = $key ? LicenseKeyGenerator::format($key) : null;
                         Notification::make()
                             ->title(__('laravel-licensing-filament-manager::license.notifications.key_retrieved'))
                             ->body($formatted

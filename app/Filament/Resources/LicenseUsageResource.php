@@ -3,15 +3,14 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\LicenseUsageResource\Pages;
+use App\Services\LicenseKeyGenerator;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
-use Filament\Forms;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseUsageResource as BaseLicenseUsageResource;
-use LucaLongo\Licensing\Models\License;
 use LucaLongo\Licensing\Models\LicenseUsage;
 
 /**
@@ -37,20 +36,14 @@ class LicenseUsageResource extends BaseLicenseUsageResource
                         if (! $key) {
                             return $record->license?->uid ?? '—';
                         }
-                        $upper = strtoupper($key);
 
-                        return implode('-', str_split($upper, 5));
+                        return LicenseKeyGenerator::format($key);
                     })
                     ->copyable(),
 
                 TextEntry::make('usage_fingerprint')
                     ->label(__('laravel-licensing-filament-manager::license-usage.fields.usage_fingerprint'))
                     ->copyable(),
-
-                Forms\Components\TextInput::make('name')
-                    ->label(__('laravel-licensing-filament-manager::license-usage.fields.name'))
-                    ->maxLength(255)
-                    ->helperText('為此裝置命名，方便辨識（例如：王小明的手機）'),
 
                 TextEntry::make('ip')
                     ->label(__('laravel-licensing-filament-manager::license-usage.fields.ip')),
@@ -82,11 +75,6 @@ class LicenseUsageResource extends BaseLicenseUsageResource
                 ->limit(24)
                 ->searchable(),
 
-            Tables\Columns\TextColumn::make('name')
-                ->label(__('laravel-licensing-filament-manager::license-usage.fields.name'))
-                ->searchable()
-                ->placeholder('—'),
-
             Tables\Columns\TextColumn::make('ip')
                 ->label(__('laravel-licensing-filament-manager::license-usage.fields.ip'))
                 ->searchable(),
@@ -107,16 +95,15 @@ class LicenseUsageResource extends BaseLicenseUsageResource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('license_id')
+                Tables\Columns\TextColumn::make('license.uid')
                     ->label('授權碼')
-                    ->formatStateUsing(function ($state) {
-                        $license = License::find($state);
-                        $key = $license?->retrieveKey();
+                    ->formatStateUsing(function ($state, LicenseUsage $record) {
+                        $key = $record->license?->retrieveKey();
                         if (! $key) {
-                            return $license?->uid ?? '—';
+                            return $state ?? '—';
                         }
 
-                        return implode('-', str_split(strtoupper($key), 5));
+                        return LicenseKeyGenerator::format($key);
                     })
                     ->copyable()
                     ->searchable()

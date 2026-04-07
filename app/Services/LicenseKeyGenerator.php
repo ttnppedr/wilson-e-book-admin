@@ -23,4 +23,12 @@ class LicenseKeyGenerator implements LicenseKeyGeneratorContract
 
         return $key;
     }
+
+    /**
+     * 格式化授權碼為大寫、每 5 字元加 dash（如 A7KMR-3NPX9-BWD5H-TJ2QF）。
+     */
+    public static function format(string $key): string
+    {
+        return implode('-', str_split(strtoupper($key), 5));
+    }
 }
