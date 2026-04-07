@@ -20,7 +20,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseResource as BaseLicenseResource;
 use LucaLongo\Licensing\Enums\LicenseStatus;
-use LucaLongo\Licensing\Models\License;
+use App\Models\License;
 use LucaLongo\Licensing\Models\LicenseScope;
 
 /**
@@ -73,10 +73,17 @@ class LicenseResource extends BaseLicenseResource
                         Forms\Components\Select::make('status')
                             ->label(__('laravel-licensing-filament-manager::license.fields.status'))
                             ->options(function (?License $record) {
+                                $statusLabels = [
+                                    'pending' => '待啟用',
+                                    'active' => '啟用中',
+                                    'expired' => '已到期',
+                                    'cancelled' => '已取消',
+                                ];
+
                                 // 移除寬限期和暫停選項
                                 $options = collect(LicenseStatus::cases())
                                     ->filter(fn (LicenseStatus $s) => ! in_array($s, [LicenseStatus::Grace, LicenseStatus::Suspended]))
-                                    ->mapWithKeys(fn (LicenseStatus $s) => [$s->value => $s->name]);
+                                    ->mapWithKeys(fn (LicenseStatus $s) => [$s->value => $statusLabels[$s->value] ?? $s->name]);
 
                                 if (! $record || $record->status === LicenseStatus::Pending) {
                                     return $options->toArray();

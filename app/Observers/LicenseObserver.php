@@ -3,7 +3,7 @@
 namespace App\Observers;
 
 use Illuminate\Support\Facades\Crypt;
-use LucaLongo\Licensing\Models\License;
+use App\Models\License;
 
 class LicenseObserver
 {

@@ -3,7 +3,7 @@
 use App\Models\LicenseScope;
 use App\Services\LicenseKeyGenerator;
 use App\Services\WilsonPasetoTokenService;
-use LucaLongo\Licensing\Models\License;
+use App\Models\License;
 use LucaLongo\Licensing\Models\LicenseRenewal;
 use LucaLongo\Licensing\Models\LicenseUsage;
 use LucaLongo\Licensing\Models\LicensingAuditLog;

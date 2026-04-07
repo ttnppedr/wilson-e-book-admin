@@ -12,7 +12,7 @@ use Illuminate\Support\ServiceProvider;
 use LucaLongo\Licensing\Enums\KeyStatus;
 use LucaLongo\Licensing\Enums\LicenseStatus;
 use LucaLongo\Licensing\Enums\UsageStatus;
-use LucaLongo\Licensing\Models\License;
+use App\Models\License;
 
 class AppServiceProvider extends ServiceProvider
 {

@@ -3,7 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use LucaLongo\Licensing\Models\License;
+use App\Models\License;
 use LucaLongo\Licensing\Models\LicenseScope as BaseLicenseScope;
 
 class LicenseScope extends BaseLicenseScope

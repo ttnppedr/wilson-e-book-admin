@@ -7,7 +7,7 @@ use App\Models\LicenseScope;
 use App\Services\LicenseKeyGenerator;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
-use LucaLongo\Licensing\Models\License;
+use App\Models\License;
 
 class CreateLicense extends CreateRecord
 {
