@@ -110,14 +110,14 @@ class LicenseController extends BaseLicenseController
     }
 
     /**
-     * 透過 License → Template → ContentEncryptionKey 關聯取得 32-byte binary content key。
+     * 透過 License → Scope → ContentEncryptionKey 關聯取得 32-byte binary content key。
      *
      * ContentEncryptionKey.encrypted_key 透過 encrypted cast 解密後為 base64 字串，
-     * 解碼後回傳 raw bytes。不再從 licenses.meta 讀取明文副本。
+     * 解碼後回傳 raw bytes。
      */
     protected function extractRawContentKey(License $license): ?string
     {
-        $cek = $license->template?->contentEncryptionKey;
+        $cek = $license->scope?->contentEncryptionKey;
         if (! $cek) {
             return null;
         }

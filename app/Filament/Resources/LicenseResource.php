@@ -52,43 +52,17 @@ class LicenseResource extends BaseLicenseResource
 
                                 return null;
                             })
-                            ->hidden(fn ($livewire) => method_exists($livewire, 'getOwnerRecord')),
-
-                        Forms\Components\Select::make('template_id')
-                            ->label(__('laravel-licensing-filament-manager::license.fields.template'))
-                            ->preload()
-                            ->searchable()
-                            ->required()
-                            ->live()
-                            ->disabled(fn (?License $record) => $isActivated($record))
-                            ->options(function (callable $get, ?License $record) {
-                                $scopeId = $get('license_scope_id') ?? $record?->license_scope_id;
-                                if (! $scopeId) {
-                                    return [];
-                                }
-                                $scope = LicenseScope::find($scopeId);
-                                if (! $scope) {
-                                    return [];
-                                }
-                                $query = $scope->templates()->orderedByTier();
-                                if (! $record?->template_id) {
-                                    $query->active();
-                                }
-
-                                return $query->pluck('name', 'id')->toArray();
-                            })
+                            ->hidden(fn ($livewire) => method_exists($livewire, 'getOwnerRecord'))
                             ->afterStateUpdated(function ($state, callable $set): void {
                                 if (! $state) {
                                     return;
                                 }
-                                $templateModel = config('licensing.models.license_template');
-                                $template = $templateModel::find($state);
-                                if (! $template || ! $template->license_duration_days) {
+                                $scope = LicenseScope::find($state);
+                                if (! $scope || ! $scope->default_duration_days) {
                                     return;
                                 }
-                                $set('expires_at', now()->addDays($template->license_duration_days)->format('Y-m-d H:i:s'));
-                            })
-                            ->helperText(__('laravel-licensing-filament-manager::license.help.template')),
+                                $set('expires_at', now()->addDays($scope->default_duration_days)->format('Y-m-d H:i:s'));
+                            }),
 
                         Forms\Components\Select::make('status')
                             ->label(__('laravel-licensing-filament-manager::license.fields.status'))
@@ -131,7 +105,7 @@ class LicenseResource extends BaseLicenseResource
                                     ->displayFormat('d/m/Y H:i')
                                     ->required()
                                     ->disabled(fn (?License $record) => $isActivated($record))
-                                    ->helperText('選擇範本後自動帶入，可手動調整。不論何時啟用，到期時間固定不變。'),
+                                    ->helperText('選擇授權範圍後自動帶入，可手動調整。不論何時啟用，到期時間固定不變。'),
                             ])
                             ->columns(),
 
@@ -177,8 +151,7 @@ class LicenseResource extends BaseLicenseResource
                     ->searchable()
                     ->copyable()
                     ->sortable()
-                    ->limit(8)
-                    ->description(fn (License $record) => $record->template?->name),
+                    ->limit(8),
 
                 Tables\Columns\TextColumn::make('scope.name')
                     ->label(__('laravel-licensing-filament-manager::license.fields.license_scope'))
@@ -231,12 +204,6 @@ class LicenseResource extends BaseLicenseResource
                 Tables\Filters\SelectFilter::make('license_scope_id')
                     ->label(__('laravel-licensing-filament-manager::license.fields.license_scope'))
                     ->relationship('scope', 'name')
-                    ->searchable()
-                    ->preload(),
-
-                Tables\Filters\SelectFilter::make('template_id')
-                    ->label(__('laravel-licensing-filament-manager::license.fields.template'))
-                    ->relationship('template', 'name')
                     ->searchable()
                     ->preload(),
 

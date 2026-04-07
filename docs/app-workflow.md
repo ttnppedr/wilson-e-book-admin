@@ -79,9 +79,10 @@ Config 中 `force_online_after_days` 設為 `9999`（不強制上線）。
 
 ### 3. content_key 機制
 
-- content_key 存在 LicenseScope 或 Template 的 `meta` 中（產品級）
-- License Observer 在建立 License 時從 Template/Scope 複製到 License meta
-- 自訂 API Controller 在 `/activate` 回應中加入 content_key
+- content_key 存在 `ContentEncryptionKey` model 中，透過 `LicenseScope.content_encryption_key_id` 關聯
+- 每個 LicenseScope 代表一個產品/版本，關聯一把 content_key
+- 自訂 API Controller 在 `/activate` 時透過 `License → Scope → ContentEncryptionKey` 取得 content_key
+- 使用 ECDH 包裝後放入 PASETO token 的 extra_claims
 - 同一產品的所有使用者取得同一把 content_key（因為 APK 中的素材用同一把 key 加密）
 
 ---
@@ -221,16 +222,14 @@ AES-GCM 必須從頭到尾循序處理，如果影片整檔加密，使用者無
 
 管理員最常做的事是「建立授權 → 把授權碼給使用者」。MVP 介面應讓這個流程在 3 秒內完成。
 
-### 建立授權的理想流程（3 步驟）
+### 建立授權的理想流程（2 步驟）
 
-1. 選擇「授權範圍」（如果只有一個，自動選定）
-2. 選擇「範本」（自動算出 `expires_at`）
-3. 按「建立」→ 系統產生 20 字元授權碼 + content_key → 顯示授權碼可複製
+1. 選擇「授權範圍」（= 產品/版本，自動帶入 `expires_at` 和 `max_usages`）
+2. 按「建立」→ 系統產生 20 字元授權碼 → 顯示授權碼可複製
 
 ### 隱藏的功能（MVP 不需要）
 
 - License Scope：`description`、`default_grace_days`、`key_rotation_days` 區塊、`meta`
-- License Template：`parent_template_id`、`slug`、trial 相關、grace 相關、`base_configuration`、`meta`
 - License：`uid`、`licensable`、`status` 手動選擇、`max_usages`（固定 1）、`meta`、Renewals/Transfers/Trials RelationManagers
 - License Usage：`client_type`、`meta`
 
@@ -244,7 +243,7 @@ AES-GCM 必須從頭到尾循序處理，如果影片整檔加密，使用者無
 |---|---|---|
 | `app/Services/LicenseKeyGenerator.php` | 新建 | 自訂 20 字元金鑰產生器 |
 | `config/licensing.php` | 修改 | key_generator 指向自訂類別 + 調整 offline_token |
-| `app/Observers/LicenseObserver.php` | 新建 | License 建立時自動產生 content_key |
+| `app/Models/LicenseScope.php` | 新建 | 自訂 LicenseScope model（含 CEK 關聯 + createLicense） |
 | `app/Providers/AppServiceProvider.php` | 修改 | 註冊 LicenseObserver |
 | `app/Http/Controllers/Api/LicenseController.php` | 新建 | 動態 TTL + 回傳 content_key |
 | `routes/api.php` | 新建 | 覆寫 activate endpoint |
@@ -257,7 +256,7 @@ AES-GCM 必須從頭到尾循序處理，如果影片整檔加密，使用者無
 | `app/Filament/Resources/LicenseScopeResource.php` | 修改 | 隱藏 grace/rotation/meta 欄位 |
 | `app/Filament/Resources/LicenseResource.php` | 新建 | 精簡建立表單 + 移除 Renewals/Transfers/Trials |
 | `app/Filament/Resources/LicenseUsageResource.php` | 修改 | 隱藏 client_type/meta |
-| `app/Filament/Resources/LicenseScopeResource/RelationManagers/TemplatesRelationManager.php` | 修改 | 隱藏 trial/grace/inheritance/meta |
+| `app/Filament/Resources/LicenseResource/Pages/CreateLicense.php` | 修改 | 改用 Scope.createLicense 建立授權 |
 | `app/Providers/Filament/CustomLicensingPlugin.php` | 修改 | 註冊 LicenseResource 覆寫 |
 
 ---
@@ -277,9 +276,9 @@ vendor/bin/sail artisan licensing:keys:issue-signing
 ## 驗證方式
 
 1. 後台建立 License，確認授權碼為 20 字元（排除混淆字元）
-2. 確認 License meta 中有 `content_key`（Base64 編碼的 32 bytes AES key）
+2. 確認 License 的 Scope 已關聯 ContentEncryptionKey
 3. `POST /api/licensing/v1/activate` 確認回應包含：
-   - `content_key`（Base64 字串）
+   - `wrapped_content_key`（ECDH 包裝的加密金鑰）
    - `token` 的 `exp` = `license.expires_at`（非固定天數）
    - `public_key_bundle`
 4. 同 key + 不同 fingerprint → 回傳 `USAGE_LIMIT_REACHED`

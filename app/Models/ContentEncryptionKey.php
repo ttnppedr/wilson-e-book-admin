@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use LucaLongo\Licensing\Models\LicenseTemplate;
 
 class ContentEncryptionKey extends Model
 {
@@ -24,9 +23,9 @@ class ContentEncryptionKey extends Model
         ];
     }
 
-    public function templates(): HasMany
+    public function scopes(): HasMany
     {
-        return $this->hasMany(LicenseTemplate::class);
+        return $this->hasMany(LicenseScope::class);
     }
 
     /**

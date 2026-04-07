@@ -14,7 +14,8 @@ Wilson 電子書管理後台，基於 Laravel 12 + Filament v4 建構，整合 `
 ## 架構
 
 - **管理面板**: Filament v4，路徑 `/admin`，設定在 `app/Providers/Filament/AdminPanelProvider.php`
-- **授權系統**: `masterix21/laravel-licensing` + `laravel-licensing-filament-manager`，包含授權範圍、授權、授權使用三層架構
+- **授權系統**: `masterix21/laravel-licensing` + `laravel-licensing-filament-manager`，兩層架構：LicenseScope（產品/版本）→ License（個別授權）→ LicenseUsage（席位）。已移除 LicenseTemplate 中間層
+- **Content Encryption Key**: 掛在 LicenseScope 上（`content_encryption_key_id`），每個產品/版本對應一把加密金鑰，啟用 API 透過 `License → Scope → CEK` 取得
 - **授權 enum 翻譯**: 在 `app/Providers/AppServiceProvider.php` 透過 `TextColumn::configureUsing` 和 `Select::configureUsing` 全域翻譯
 - **翻譯檔**: 套件有兩個翻譯 namespace（`laravel-licensing-filament-manager` 和 `licensing-filament-manager`），zh_TW 翻譯分別在 `lang/vendor/` 下對應的兩個目錄
 - **時區**: 顯示用 `Asia/Taipei`（GMT+8），資料庫儲存為 UTC
@@ -27,6 +28,7 @@ Wilson 電子書管理後台，基於 Laravel 12 + Filament v4 建構，整合 `
 - Migration 執行前先檢查外鍵依賴順序與 MySQL 索引名稱長度限制（64 字元）
 - 不要用自訂類別覆寫來迴避翻譯或顯示問題，優先找根本原因
 - `config/licensing-filament-manager.php` 的 `licensed_entities` 尚未設定
+- LicenseTemplate 已移除（`license_templates` 表已刪除），不要再引用 Template 相關的類別或欄位
 
 <laravel-boost-guidelines>
 === foundation rules ===

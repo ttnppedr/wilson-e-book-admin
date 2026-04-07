@@ -3,12 +3,33 @@
 namespace App\Filament\Resources\LicenseResource\Pages;
 
 use App\Filament\Resources\LicenseResource;
+use App\Models\LicenseScope;
 use Filament\Notifications\Notification;
-use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseResource\Pages\CreateLicense as BaseCreateLicense;
+use Filament\Resources\Pages\CreateRecord;
+use LucaLongo\Licensing\Models\License;
 
-class CreateLicense extends BaseCreateLicense
+class CreateLicense extends CreateRecord
 {
     protected static string $resource = LicenseResource::class;
+
+    protected ?string $generatedKey = null;
+
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('index');
+    }
+
+    protected function handleRecordCreation(array $data): License
+    {
+        /** @var LicenseScope $scope */
+        $scope = LicenseScope::findOrFail($data['license_scope_id']);
+
+        $record = $scope->createLicense($data);
+
+        $this->generatedKey = $record->temporaryLicenseKey;
+
+        return $record->refresh();
+    }
 
     protected function afterCreate(): void
     {

@@ -4,7 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\LicenseScopeResource\Pages;
 use App\Filament\Resources\LicenseScopeResource\RelationManagers\LicensesRelationManager;
-use App\Filament\Resources\LicenseScopeResource\RelationManagers\TemplatesRelationManager;
+use App\Models\ContentEncryptionKey;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
@@ -62,6 +62,13 @@ class LicenseScopeResource extends BaseLicenseScopeResource
                 Section::make(__('laravel-licensing-filament-manager::license-scope.form.default_license_settings'))
                     ->columns()
                     ->schema([
+                        Forms\Components\Select::make('content_encryption_key_id')
+                            ->label('Content Encryption Key')
+                            ->options(ContentEncryptionKey::pluck('name', 'id'))
+                            ->searchable()
+                            ->preload()
+                            ->helperText('此產品/版本使用的內容加密金鑰'),
+
                         Forms\Components\TextInput::make('default_max_usages')
                             ->label(__('laravel-licensing-filament-manager::license-scope.fields.default_max_usages'))
                             ->numeric()
@@ -130,7 +137,6 @@ class LicenseScopeResource extends BaseLicenseScopeResource
     public static function getRelations(): array
     {
         return [
-            TemplatesRelationManager::class,
             LicensesRelationManager::class,
         ];
     }
