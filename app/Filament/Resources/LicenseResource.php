@@ -67,6 +67,7 @@ class LicenseResource extends BaseLicenseResource
 
                         Forms\Components\TextInput::make('name')
                             ->label(__('laravel-licensing-filament-manager::license.fields.name'))
+                            ->required()
                             ->maxLength(255)
                             ->helperText(__('laravel-licensing-filament-manager::license.help.name')),
 
