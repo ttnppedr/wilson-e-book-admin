@@ -2,15 +2,16 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\LicenseStatusLabel;
 use App\Filament\Resources\LicenseResource\Pages;
 use App\Filament\Resources\LicenseResource\RelationManagers\UsagesRelationManager;
+use App\Models\License;
 use App\Services\LicenseKeyGenerator;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms;
-use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
@@ -20,7 +21,6 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseResource as BaseLicenseResource;
 use LucaLongo\Licensing\Enums\LicenseStatus;
-use App\Models\License;
 use LucaLongo\Licensing\Models\LicenseScope;
 
 /**
@@ -72,31 +72,12 @@ class LicenseResource extends BaseLicenseResource
 
                         Forms\Components\Select::make('status')
                             ->label(__('laravel-licensing-filament-manager::license.fields.status'))
-                            ->options(function (?License $record) {
-                                $statusLabels = [
-                                    'pending' => '待啟用',
-                                    'active' => '啟用中',
-                                    'expired' => '已到期',
-                                    'cancelled' => '已取消',
-                                ];
-
-                                // 移除寬限期和暫停選項
-                                $options = collect(LicenseStatus::cases())
-                                    ->filter(fn (LicenseStatus $s) => ! in_array($s, [LicenseStatus::Grace, LicenseStatus::Suspended]))
-                                    ->mapWithKeys(fn (LicenseStatus $s) => [$s->value => $statusLabels[$s->value] ?? $s->name]);
-
-                                if (! $record || $record->status === LicenseStatus::Pending) {
-                                    return $options->toArray();
-                                }
-
-                                // 已啟用：不能改回待啟用，不能手動設為已到期（自動判斷）
-                                return $options
-                                    ->filter(fn ($label, $value) => ! in_array($value, [
-                                        LicenseStatus::Pending->value,
-                                        LicenseStatus::Expired->value,
-                                    ]))
-                                    ->toArray();
-                            })
+                            ->options(
+                                collect(LicenseStatusLabel::cases())
+                                    ->filter(fn (LicenseStatusLabel $s) => ! in_array($s, [LicenseStatusLabel::Grace, LicenseStatusLabel::Suspended]))
+                                    ->mapWithKeys(fn (LicenseStatusLabel $s) => [$s->value => $s->getLabel()])
+                                    ->toArray()
+                            )
                             ->required()
                             ->default(LicenseStatus::Pending->value)
                             ->hiddenOn('create'),
@@ -122,22 +103,6 @@ class LicenseResource extends BaseLicenseResource
                             ])
                             ->columns(),
 
-                        Section::make(__('laravel-licensing-filament-manager::license.form.security'))
-                            ->schema([
-                                TextEntry::make('retrieval_status')
-                                    ->label(__('laravel-licensing-filament-manager::license.fields.key_visibility'))
-                                    ->state(function (?License $record) {
-                                        if (! $record) {
-                                            return __('laravel-licensing-filament-manager::license.security.key_not_yet_generated');
-                                        }
-
-                                        return $record->canRetrieveKey()
-                                            ? __('laravel-licensing-filament-manager::license.security.key_retrievable')
-                                            : __('laravel-licensing-filament-manager::license.security.key_not_retrievable');
-                                    })
-                                    ->hidden(fn (?License $record) => $record === null),
-                            ])
-                            ->hidden(fn (?License $record) => $record === null),
                     ]),
             ]);
     }
@@ -162,11 +127,8 @@ class LicenseResource extends BaseLicenseResource
                 Tables\Columns\TextColumn::make('status')
                     ->label(__('laravel-licensing-filament-manager::license.fields.status'))
                     ->badge()
-                    ->colors([
-                        'warning' => LicenseStatus::Pending,
-                        'success' => LicenseStatus::Active,
-                        'danger' => [LicenseStatus::Expired, LicenseStatus::Suspended, LicenseStatus::Cancelled],
-                    ]),
+                    ->formatStateUsing(fn (LicenseStatus $state) => LicenseStatusLabel::from($state->value)->getLabel())
+                    ->color(fn (LicenseStatus $state) => LicenseStatusLabel::from($state->value)->getColor()),
 
                 Tables\Columns\TextColumn::make('activated_at')
                     ->label(__('laravel-licensing-filament-manager::license.fields.activated_at'))
@@ -189,7 +151,7 @@ class LicenseResource extends BaseLicenseResource
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
                     ->label(__('laravel-licensing-filament-manager::license.fields.status'))
-                    ->options(LicenseStatus::class)
+                    ->options(LicenseStatusLabel::class)
                     ->multiple(),
 
                 Tables\Filters\SelectFilter::make('license_scope_id')
