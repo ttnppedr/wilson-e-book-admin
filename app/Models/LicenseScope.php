@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\License;
 use LucaLongo\Licensing\Models\LicenseScope as BaseLicenseScope;
 
@@ -23,6 +24,11 @@ class LicenseScope extends BaseLicenseScope
         'content_encryption_key_id',
         'meta',
     ];
+
+    public function licenses(): HasMany
+    {
+        return $this->hasMany(config('licensing.models.license'));
+    }
 
     public function contentEncryptionKey(): BelongsTo
     {
