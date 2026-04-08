@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Models\License;
+use Illuminate\Support\Str;
 use LucaLongo\Licensing\Models\LicenseScope as BaseLicenseScope;
 
 class LicenseScope extends BaseLicenseScope
@@ -24,6 +24,30 @@ class LicenseScope extends BaseLicenseScope
         'content_encryption_key_id',
         'meta',
     ];
+
+    protected static function booted(): void
+    {
+        parent::booted();
+
+        static::creating(function (self $scope): void {
+            $baseSlug = 'scope-'.strtolower(Str::random(8));
+            $scope->slug = static::makeUniqueSlug($baseSlug);
+            $scope->identifier = $scope->slug;
+        });
+    }
+
+    private static function makeUniqueSlug(string $baseSlug): string
+    {
+        $slug = $baseSlug;
+        $counter = 1;
+
+        while (static::where('slug', $slug)->exists()) {
+            $slug = $baseSlug.'-'.$counter;
+            $counter++;
+        }
+
+        return $slug;
+    }
 
     public function licenses(): HasMany
     {

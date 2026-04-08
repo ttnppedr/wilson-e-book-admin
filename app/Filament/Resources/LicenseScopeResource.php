@@ -10,7 +10,6 @@ use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms;
 use Filament\Schemas\Components\Section;
-use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -33,26 +32,7 @@ class LicenseScopeResource extends BaseLicenseScopeResource
                         Forms\Components\TextInput::make('name')
                             ->label(__('laravel-licensing-filament-manager::license-scope.fields.name'))
                             ->required()
-                            ->maxLength(255)
-                            ->live(onBlur: true)
-                            ->afterStateUpdated(function (?string $state, Set $set): void {
-                                if ($state) {
-                                    $set('slug', str($state)->slug()->toString());
-                                }
-                            }),
-
-                        Forms\Components\TextInput::make('slug')
-                            ->label(__('laravel-licensing-filament-manager::license-scope.fields.slug'))
-                            ->required()
-                            ->maxLength(255)
-                            ->unique(LicenseScope::class, 'slug', ignoreRecord: true)
-                            ->regex('/^[a-z0-9]+(?:-[a-z0-9]+)*$/'),
-
-                        Forms\Components\TextInput::make('identifier')
-                            ->label(__('laravel-licensing-filament-manager::license-scope.fields.identifier'))
-                            ->maxLength(255)
-                            ->unique(LicenseScope::class, 'identifier', ignoreRecord: true)
-                            ->helperText(__('laravel-licensing-filament-manager::license-scope.fields.identifier_help')),
+                            ->maxLength(255),
 
                         Forms\Components\Toggle::make('is_active')
                             ->label(__('laravel-licensing-filament-manager::license-scope.fields.is_active'))
@@ -67,7 +47,12 @@ class LicenseScopeResource extends BaseLicenseScopeResource
                             ->options(ContentEncryptionKey::pluck('name', 'id'))
                             ->searchable()
                             ->preload()
-                            ->helperText('此產品/版本使用的內容加密金鑰'),
+                            ->required()
+                            ->disabled(fn (?LicenseScope $record): bool => $record !== null)
+                            ->dehydrated()
+                            ->helperText(fn (?LicenseScope $record): string => $record !== null
+                                ? '建立後不可變更'
+                                : '此產品/版本使用的內容加密金鑰'),
 
                         Forms\Components\TextInput::make('default_max_usages')
                             ->label(__('laravel-licensing-filament-manager::license-scope.fields.default_max_usages'))
@@ -96,18 +81,9 @@ class LicenseScopeResource extends BaseLicenseScopeResource
 
                 Tables\Columns\TextColumn::make('name')
                     ->label(__('laravel-licensing-filament-manager::license-scope.fields.name'))
-                    ->description(fn ($record) => $record->identifier)
                     ->searchable()
                     ->sortable()
                     ->weight('bold'),
-
-                Tables\Columns\TextColumn::make('slug')
-                    ->label(__('laravel-licensing-filament-manager::license-scope.fields.slug'))
-                    ->searchable()
-                    ->sortable()
-                    ->copyable()
-                    ->badge()
-                    ->color('gray'),
 
                 Tables\Columns\TextColumn::make('licenses_count')
                     ->label(__('laravel-licensing-filament-manager::license-scope.fields.licenses_count'))
