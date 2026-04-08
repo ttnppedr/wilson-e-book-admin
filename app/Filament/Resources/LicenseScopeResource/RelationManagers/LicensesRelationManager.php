@@ -36,7 +36,9 @@ class LicensesRelationManager extends BaseLicensesRelationManager
             ->filters($filters)
             ->headerActions([
                 CreateAction::make()
-                    ->url(fn () => LicenseResource::getUrl('create')),
+                    ->label(__('laravel-licensing-filament-manager::license.actions.create'))
+                    ->url(fn () => LicenseResource::getUrl('create'))
+                    ->visible(fn () => $this->getOwnerRecord()->is_active),
             ]);
     }
 

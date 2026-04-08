@@ -111,8 +111,10 @@ class LicenseUsageResource extends BaseLicenseUsageResource
                 ...static::usageColumns(),
             ])
             ->recordActions([
-                ViewAction::make(),
-                EditAction::make(),
+                ViewAction::make()
+                    ->label(__('laravel-licensing-filament-manager::common.actions.view')),
+                EditAction::make()
+                    ->label(__('laravel-licensing-filament-manager::common.actions.edit')),
             ])
             ->defaultSort('registered_at', 'desc');
     }

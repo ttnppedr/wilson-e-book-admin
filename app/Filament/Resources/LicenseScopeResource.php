@@ -63,7 +63,7 @@ class LicenseScopeResource extends BaseLicenseScopeResource
                     ->columns()
                     ->schema([
                         Forms\Components\Select::make('content_encryption_key_id')
-                            ->label('Content Encryption Key')
+                            ->label('內容加密金鑰')
                             ->options(ContentEncryptionKey::pluck('name', 'id'))
                             ->searchable()
                             ->preload()

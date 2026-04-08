@@ -40,7 +40,7 @@ class LicenseResource extends BaseLicenseResource
                     ->schema([
                         Forms\Components\Select::make('license_scope_id')
                             ->label(__('laravel-licensing-filament-manager::license.fields.license_scope'))
-                            ->relationship('scope', 'name')
+                            ->relationship('scope', 'name', fn (Builder $query) => $query->where('is_active', true))
                             ->searchable()
                             ->preload()
                             ->required()
