@@ -29,6 +29,11 @@ use LucaLongo\Licensing\Models\LicenseScope;
  */
 class LicenseResource extends BaseLicenseResource
 {
+    public static function getNavigationBadge(): ?string
+    {
+        return null;
+    }
+
     public static function form(Schema $schema): Schema
     {
         $isActivated = fn (?License $record): bool => $record !== null && $record->status !== LicenseStatus::Pending;

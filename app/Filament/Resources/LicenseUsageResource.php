@@ -22,6 +22,11 @@ use App\Models\LicenseUsage;
  */
 class LicenseUsageResource extends BaseLicenseUsageResource
 {
+    public static function getNavigationBadge(): ?string
+    {
+        return null;
+    }
+
     public static function getRecordTitle(?Model $record): string|\Illuminate\Contracts\Support\Htmlable|null
     {
         return $record?->license?->name;

@@ -22,6 +22,11 @@ use LucaLongo\Licensing\Models\LicenseScope;
  */
 class LicenseScopeResource extends BaseLicenseScopeResource
 {
+    public static function getNavigationBadge(): ?string
+    {
+        return null;
+    }
+
     public static function form(Schema $schema): Schema
     {
         return $schema
