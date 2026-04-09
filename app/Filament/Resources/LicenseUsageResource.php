@@ -11,6 +11,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseUsageResource as BaseLicenseUsageResource;
 use App\Models\LicenseUsage;
 
@@ -21,6 +22,11 @@ use App\Models\LicenseUsage;
  */
 class LicenseUsageResource extends BaseLicenseUsageResource
 {
+    public static function getRecordTitle(?Model $record): string|\Illuminate\Contracts\Support\Htmlable|null
+    {
+        return $record?->license?->name;
+    }
+
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()->with('license');
@@ -35,6 +41,9 @@ class LicenseUsageResource extends BaseLicenseUsageResource
     {
         return $schema
             ->schema([
+                TextEntry::make('license.name')
+                    ->label('授權名稱'),
+
                 TextEntry::make('license_key_display')
                     ->label(__('laravel-licensing-filament-manager::licensing.fields.license_key'))
                     ->state(function (LicenseUsage $record) {
@@ -101,6 +110,10 @@ class LicenseUsageResource extends BaseLicenseUsageResource
     {
         return $table
             ->columns([
+                Tables\Columns\TextColumn::make('license.name')
+                    ->label('授權名稱')
+                    ->searchable()
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('license.uid')
                     ->label('授權碼')
                     ->formatStateUsing(function ($state, LicenseUsage $record) {

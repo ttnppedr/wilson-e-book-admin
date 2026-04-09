@@ -8,4 +8,9 @@ use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseUsageRes
 class ViewLicenseUsage extends BaseViewLicenseUsage
 {
     protected static string $resource = LicenseUsageResource::class;
+
+    protected function getHeaderActions(): array
+    {
+        return [];
+    }
 }
