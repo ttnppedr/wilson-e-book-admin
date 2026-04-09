@@ -45,6 +45,7 @@ class LicenseScopeResource extends BaseLicenseScopeResource
                         Forms\Components\Select::make('content_encryption_key_id')
                             ->label('內容加密金鑰')
                             ->options(ContentEncryptionKey::pluck('name', 'id'))
+                            ->native(false)
                             ->searchable()
                             ->preload()
                             ->required()

@@ -41,6 +41,7 @@ class LicenseResource extends BaseLicenseResource
                         Forms\Components\Select::make('license_scope_id')
                             ->label(__('laravel-licensing-filament-manager::license.fields.license_scope'))
                             ->relationship('scope', 'name', fn (Builder $query) => $query->where('is_active', true))
+                            ->native(false)
                             ->searchable()
                             ->preload()
                             ->required()
@@ -73,6 +74,7 @@ class LicenseResource extends BaseLicenseResource
 
                         Forms\Components\Select::make('status')
                             ->label(__('laravel-licensing-filament-manager::license.fields.status'))
+                            ->native(false)
                             ->options(function (?License $record): array {
                                 $options = [
                                     LicenseStatus::Suspended->value => LicenseStatusLabel::Suspended->getLabel(),
