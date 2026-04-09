@@ -11,7 +11,6 @@ class License extends BaseLicense
         'status',
         'licensable_type',
         'licensable_id',
-        'template_id',
         'license_scope_id',
         'name',
         'activated_at',

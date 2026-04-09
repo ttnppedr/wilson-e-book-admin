@@ -5,7 +5,7 @@ use App\Services\LicenseKeyGenerator;
 use App\Services\WilsonPasetoTokenService;
 use App\Models\License;
 use LucaLongo\Licensing\Models\LicenseRenewal;
-use LucaLongo\Licensing\Models\LicenseUsage;
+use App\Models\LicenseUsage;
 use LucaLongo\Licensing\Models\LicensingAuditLog;
 use LucaLongo\Licensing\Models\LicensingKey;
 use LucaLongo\Licensing\Services\EncryptedLicenseKeyRegenerator;

@@ -10,8 +10,9 @@ use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseUsageResource as BaseLicenseUsageResource;
-use LucaLongo\Licensing\Models\LicenseUsage;
+use App\Models\LicenseUsage;
 
 /**
  * MVP 精簡版 LicenseUsageResource。
@@ -20,6 +21,11 @@ use LucaLongo\Licensing\Models\LicenseUsage;
  */
 class LicenseUsageResource extends BaseLicenseUsageResource
 {
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->with('license');
+    }
+
     public static function canCreate(): bool
     {
         return false;
