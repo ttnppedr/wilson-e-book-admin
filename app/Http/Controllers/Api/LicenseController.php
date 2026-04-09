@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use LucaLongo\Licensing\Http\Controllers\Api\LicenseController as BaseLicenseController;
 use LucaLongo\Licensing\Models\License;
+use LucaLongo\Licensing\Models\LicensingKey;
 
 class LicenseController extends BaseLicenseController
 {
@@ -115,6 +116,42 @@ class LicenseController extends BaseLicenseController
         $data['name'] = $license->name;
 
         return $data;
+    }
+
+    /**
+     * 覆寫 vendor buildPublicKeyBundle()。
+     *
+     * vendor 的 findActiveSigning() 預設用 forScope(null) 只找無 scope 的 key，
+     * 但本專案的 signing key 綁定 scope，需忽略 scope 限制查找。
+     */
+    protected function buildPublicKeyBundle(): ?array
+    {
+        $signingKey = LicensingKey::activeSigning()
+            ->orderBy('created_at', 'desc')
+            ->first();
+
+        $rootKey = LicensingKey::findActiveRoot();
+
+        if (! $signingKey || ! $rootKey) {
+            return null;
+        }
+
+        return [
+            'signing' => array_filter([
+                'kid' => $signingKey->kid,
+                'public_key' => $signingKey->getPublicKey(),
+                'certificate' => $signingKey->getCertificate(),
+                'valid_from' => $signingKey->valid_from?->format('c'),
+                'valid_until' => $signingKey->valid_until?->format('c'),
+            ], fn ($v) => $v !== null),
+            'root' => array_filter([
+                'kid' => $rootKey->kid,
+                'public_key' => $rootKey->getPublicKey(),
+                'valid_from' => $rootKey->valid_from?->format('c'),
+                'valid_until' => $rootKey->valid_until?->format('c'),
+            ], fn ($v) => $v !== null),
+            'issued_at' => now()->format('c'),
+        ];
     }
 
     /**

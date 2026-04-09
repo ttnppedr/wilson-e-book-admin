@@ -1,4 +1,13 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(vendor/bin/sail bin:*)",
+      "mcp__laravel-boost__database-schema",
+      "mcp__laravel-boost__read-log-entries",
+      "mcp__laravel-boost__search-docs",
+      "mcp__laravel-boost__application-info"
+    ]
+  },
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "laravel-boost"
@@ -16,11 +25,6 @@
           }
         ]
       }
-    ]
-  },
-  "permissions": {
-    "allow": [
-      "Bash(vendor/bin/sail bin:*)"
     ]
   }
 }
