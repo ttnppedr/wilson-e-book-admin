@@ -75,19 +75,11 @@ class LicenseResource extends BaseLicenseResource
                         Forms\Components\Select::make('status')
                             ->label(__('laravel-licensing-filament-manager::license.fields.status'))
                             ->native(false)
-                            ->options(function (?License $record): array {
-                                $options = [
-                                    LicenseStatus::Suspended->value => LicenseStatusLabel::Suspended->getLabel(),
-                                    LicenseStatus::Cancelled->value => LicenseStatusLabel::Cancelled->getLabel(),
-                                ];
-
-                                if ($record && ! array_key_exists($record->status->value, $options)) {
-                                    $current = LicenseStatusLabel::from($record->status->value);
-                                    $options = [$current->value => $current->getLabel()] + $options;
-                                }
-
-                                return $options;
-                            })
+                            ->options(
+                                collect(LicenseStatusLabel::cases())
+                                    ->mapWithKeys(fn (LicenseStatusLabel $s) => [$s->value => $s->getLabel()])
+                                    ->toArray()
+                            )
                             ->required()
                             ->default(LicenseStatus::Pending->value)
                             ->hiddenOn('create'),

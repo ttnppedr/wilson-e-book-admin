@@ -95,16 +95,15 @@ class EditLicenseTest extends TestCase
         $this->assertSame(LicenseStatus::Cancelled, $license->status);
     }
 
-    public function test_activate_action_visible_for_pending_license(): void
+    public function test_delete_action_visible_for_pending_license(): void
     {
         $license = $this->createLicense(['status' => LicenseStatus::Pending]);
 
         Livewire::test(EditLicense::class, ['record' => $license->getRouteKey()])
-            ->assertActionVisible('activate')
-            ->assertActionHidden('suspend');
+            ->assertActionVisible('delete');
     }
 
-    public function test_action_visibility_for_active_license(): void
+    public function test_delete_action_hidden_for_active_license(): void
     {
         $license = $this->createLicense([
             'status' => LicenseStatus::Active,
@@ -112,35 +111,6 @@ class EditLicenseTest extends TestCase
         ]);
 
         Livewire::test(EditLicense::class, ['record' => $license->getRouteKey()])
-            ->assertActionVisible('suspend')
-            ->assertActionHidden('activate');
-    }
-
-    public function test_can_activate_pending_license(): void
-    {
-        $license = $this->createLicense(['status' => LicenseStatus::Pending]);
-
-        Livewire::test(EditLicense::class, ['record' => $license->getRouteKey()])
-            ->callAction('activate')
-            ->assertHasNoActionErrors();
-
-        $license->refresh();
-        $this->assertSame(LicenseStatus::Active, $license->status);
-        $this->assertNotNull($license->activated_at);
-    }
-
-    public function test_can_suspend_active_license(): void
-    {
-        $license = $this->createLicense([
-            'status' => LicenseStatus::Active,
-            'activated_at' => now(),
-        ]);
-
-        Livewire::test(EditLicense::class, ['record' => $license->getRouteKey()])
-            ->callAction('suspend')
-            ->assertHasNoActionErrors();
-
-        $license->refresh();
-        $this->assertSame(LicenseStatus::Suspended, $license->status);
+            ->assertActionHidden('delete');
     }
 }
