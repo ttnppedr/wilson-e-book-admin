@@ -3,8 +3,10 @@
 namespace Tests\Feature\Api;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use LucaLongo\Licensing\Enums\LicenseStatus;
 use LucaLongo\Licensing\Models\License;
+use Mockery;
 use Tests\TestCase;
 
 /**
@@ -31,6 +33,33 @@ class LicenseActivateEcdhTest extends TestCase
         $kp = sodium_crypto_box_keypair();
 
         return base64_encode(sodium_crypto_box_publickey($kp));
+    }
+
+    /**
+     * Mock `api` log channel 並期望收到一次 `error` 呼叫，context 中的
+     * `internal_code` 等於指定值。
+     *
+     * 使用情境：所有 API 5xx response 都已被遮蔽成 generic `SERVER_ERROR`，
+     * 測試無法從 HTTP response 區分具體的內部錯誤原因，因此改用 log
+     * assertion 驗證 `serverError()` helper 確實記錄了正確的 internal_code。
+     *
+     * 同時接受 `info` 呼叫（LogApiCall middleware 會在 response 後寫 info），
+     * 避免干擾測試。
+     */
+    private function expectServerErrorLogged(string $expectedInternalCode): void
+    {
+        $apiChannel = Mockery::mock();
+        $apiChannel->shouldReceive('info')->zeroOrMoreTimes();
+        $apiChannel->shouldReceive('error')
+            ->once()
+            ->withArgs(function ($message, $context) use ($expectedInternalCode) {
+                return ($context['internal_code'] ?? null) === $expectedInternalCode;
+            });
+
+        Log::shouldReceive('channel')
+            ->with('api')
+            ->zeroOrMoreTimes()
+            ->andReturn($apiChannel);
     }
 
     public function test_activate_rejects_when_client_ephemeral_public_key_is_missing(): void
@@ -90,6 +119,9 @@ class LicenseActivateEcdhTest extends TestCase
 
     public function test_activate_rejects_license_without_content_key(): void
     {
+        // Response 已被遮蔽成 generic SERVER_ERROR，改用 log assertion 驗證 internal_code
+        $this->expectServerErrorLogged('MISSING_CONTENT_KEY');
+
         // 建立一個 active license，但 meta 裡沒有 content_key
         $licenseKey = 'TESTKEY'.bin2hex(random_bytes(6));
         License::create([
@@ -108,11 +140,14 @@ class LicenseActivateEcdhTest extends TestCase
         ]);
 
         $response->assertStatus(500);
-        $response->assertJsonPath('error.code', 'MISSING_CONTENT_KEY');
+        $response->assertJsonPath('error.code', 'SERVER_ERROR');
+        $response->assertJsonPath('error.message', 'Server error');
     }
 
     public function test_activate_rejects_license_with_malformed_content_key(): void
     {
+        $this->expectServerErrorLogged('MISSING_CONTENT_KEY');
+
         // meta['content_key'] 存在但不是 32 bytes base64
         $licenseKey = 'TESTKEY'.bin2hex(random_bytes(6));
         License::create([
@@ -131,20 +166,26 @@ class LicenseActivateEcdhTest extends TestCase
         ]);
 
         $response->assertStatus(500);
-        $response->assertJsonPath('error.code', 'MISSING_CONTENT_KEY');
+        $response->assertJsonPath('error.code', 'SERVER_ERROR');
+        $response->assertJsonPath('error.message', 'Server error');
     }
 
     /**
      * 迴歸防護：永久授權 (expires_at = null) 不應被前置檢查攔截。
      *
-     * 舊行為會回傳 TOKEN_REQUIRED (expires_at 是前置條件之一)。
-     * 變更後前置檢查只保留 offline token 啟用判斷，null expires_at 可以穿過，
-     * 本測試讓請求穿過前置檢查後在下一關 (沒有 scope → 拿不到 content key) 停下。
-     * 只要 error code 是 MISSING_CONTENT_KEY 而不是 TOKEN_REQUIRED，就證明
-     * 「null expires_at 已能通過前置檢查」。
+     * 舊行為會在前置檢查階段攔下 null expires_at 的 license。修正後前置檢查
+     * 只保留 offline token 啟用判斷，null expires_at 可以穿過，本測試讓請求
+     * 穿過前置檢查後在下一關 (沒有 scope → 拿不到 content key) 停下。
+     *
+     * 斷言方式：
+     *   - 從 HTTP response 無法區分（所有 500 已被遮蔽成 generic SERVER_ERROR）
+     *   - 改從 `api` log channel 驗證 `internal_code === 'MISSING_CONTENT_KEY'`，
+     *     證明請求確實穿過 TOKEN_REQUIRED 前置檢查進到 extractRawContentKey 階段
      */
     public function test_activate_does_not_reject_license_with_null_expires_at(): void
     {
+        $this->expectServerErrorLogged('MISSING_CONTENT_KEY');
+
         $licenseKey = 'TESTKEY'.bin2hex(random_bytes(6));
         License::create([
             'key_hash' => License::hashKey($licenseKey),
@@ -161,8 +202,8 @@ class LicenseActivateEcdhTest extends TestCase
             'client_ephemeral_public_key' => $this->freshClientPublicKeyB64(),
         ]);
 
-        // 關鍵斷言：不是 TOKEN_REQUIRED（這是舊行為下會回的錯誤碼）。
         $response->assertStatus(500);
-        $response->assertJsonPath('error.code', 'MISSING_CONTENT_KEY');
+        $response->assertJsonPath('error.code', 'SERVER_ERROR');
+        $response->assertJsonPath('error.message', 'Server error');
     }
 }

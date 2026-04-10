@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Services\ContentKeyWrapper;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use LucaLongo\Licensing\Http\Controllers\Api\LicenseController as BaseLicenseController;
 use LucaLongo\Licensing\Models\License;
 use LucaLongo\Licensing\Models\LicensingKey;
+use Throwable;
 
 class LicenseController extends BaseLicenseController
 {
@@ -65,20 +67,17 @@ class LicenseController extends BaseLicenseController
         // 避免 offline token 未啟用時白白消耗 usage seat 與進行 ECDH 運算。
         // 允許 expires_at = null 的永久授權（TTL 於下方動態決定）。
         if (! $license->isOfflineTokenEnabled()) {
-            return $this->error(
-                'TOKEN_REQUIRED',
-                'Offline token must be enabled',
-                500,
-            );
+            return $this->serverError('TOKEN_REQUIRED', context: [
+                'license_id' => $license->id,
+            ]);
         }
 
         $rawContentKey = $this->extractRawContentKey($license);
         if ($rawContentKey === null) {
-            return $this->error(
-                'MISSING_CONTENT_KEY',
-                'License does not have a content key configured',
-                500,
-            );
+            return $this->serverError('MISSING_CONTENT_KEY', context: [
+                'license_id' => $license->id,
+                'scope_id' => $license->license_scope_id,
+            ]);
         }
 
         $metadata = $payload['metadata'] ?? [];
@@ -97,10 +96,13 @@ class LicenseController extends BaseLicenseController
                 (string) $license->id,
                 $payload['fingerprint'],
             );
-        } catch (\Throwable $exception) {
+        } catch (Throwable $exception) {
             sodium_memzero($rawContentKey);
 
-            return $this->error('WRAP_FAILED', $exception->getMessage(), 500);
+            return $this->serverError('WRAP_FAILED', $exception, [
+                'license_id' => $license->id,
+                'usage_id' => $usage->id,
+            ]);
         }
         sodium_memzero($rawContentKey);
 
@@ -119,11 +121,47 @@ class LicenseController extends BaseLicenseController
                     'wrapped_content_key' => $wrapped,
                 ],
             ]);
-        } catch (\Throwable $exception) {
-            return $this->error('TOKEN_ISSUE_FAILED', $exception->getMessage(), 500);
+        } catch (Throwable $exception) {
+            return $this->serverError('TOKEN_ISSUE_FAILED', $exception, [
+                'license_id' => $license->id,
+                'usage_id' => $usage->id,
+            ]);
         }
 
         return $this->success($this->buildLicenseResponse($license->fresh(), $usage, $token));
+    }
+
+    /**
+     * 針對所有 API 5xx 回應的統一出口。
+     *
+     * 資安考量：
+     *   - 回傳給 client 的 body 一律為 generic `SERVER_ERROR` / `Server error`，
+     *     不暴露任何內部狀態、設定細節或 exception 訊息。
+     *   - 完整的 `internal_code`、exception class/message/trace 以及呼叫現場
+     *     傳入的 context（例如 license_id、usage_id、scope_id）會記錄到
+     *     `api` log channel（`storage/logs/api-YYYY-MM-DD.log`），供後端團隊
+     *     查詢排錯，但**絕不**出現在 HTTP response 中。
+     *
+     * 使用慣例：
+     *   - `internal_code`：語意化的錯誤分類（如 `WRAP_FAILED`、`MISSING_CONTENT_KEY`），
+     *     僅作為 log 分類用，不會回傳給 client。
+     *   - `$exception`：如果觸發 5xx 的是 catch 到的 Throwable，就傳進來，會
+     *     被完整序列化到 log。
+     *   - `$context`：額外的 log 欄位（license_id、usage_id 等），方便查詢時定位。
+     */
+    protected function serverError(string $internalCode, ?Throwable $exception = null, array $context = []): JsonResponse
+    {
+        Log::channel('api')->error('[licensing-api] server error', [
+            'internal_code' => $internalCode,
+            'exception_class' => $exception ? $exception::class : null,
+            'exception_message' => $exception?->getMessage(),
+            'exception_file' => $exception?->getFile(),
+            'exception_line' => $exception?->getLine(),
+            'exception_trace' => $exception?->getTraceAsString(),
+            'context' => $context,
+        ]);
+
+        return $this->error('SERVER_ERROR', 'Server error', 500);
     }
 
     protected function formatLicense(License $license, bool $includeUsageSummary = true): array

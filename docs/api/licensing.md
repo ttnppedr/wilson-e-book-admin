@@ -199,6 +199,26 @@ HTTP 狀態依錯誤類別（400/403/404/409/410/422/423/500），body 結構：
 
 > ⚠️ **特殊情況**：若呼叫了後端未註冊的路徑（例如 `/deactivate`），會收到 Laravel 預設的 404 HTML 或一般 JSON 404，**不會**遵循上述結構。App 端應把這種 case 視為「網路 / 設定問題」而非 API 錯誤。
 
+#### 🛡️ 5xx 錯誤遮蔽政策
+
+為降低內部資訊外洩風險，**所有 HTTP 5xx 回應一律遮蔽成 generic `SERVER_ERROR`**，不管後端實際遇到什麼錯誤都回相同內容：
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "SERVER_ERROR",
+    "message": "Server error"
+  }
+}
+```
+
+App 端**無法**從 response 區分具體原因（是 offline token 未啟用？scope 沒綁 content key？ECDH wrap 失敗？PASETO 簽發失敗？資料庫斷線？PHP fatal？）。這是刻意的資安設計——不暴露設定細節、exception 訊息、stack trace。
+
+後端仍會把完整錯誤（`internal_code`、`exception_class`、`exception_message`、`exception_trace`）記錄到 `api` log channel（`storage/logs/api-YYYY-MM-DD.log`），供後端團隊查詢排錯。若 App 端反應「一直拿到 SERVER_ERROR」，請同時提供發生時間，便於後端比對 log。
+
+所有 4xx 錯誤（`VALIDATION_FAILED`、`INVALID_KEY`、`SUSPENDED_LICENSE`、`EXPIRED_LICENSE`、`USAGE_LIMIT_REACHED` 等）**不在此政策範圍內**，仍會回傳具體 `code` 與 `message`，App 端可依此做分流處理。
+
 ### 2.5 時區
 
 - 後端顯示與 log 時區：`Asia/Taipei`（GMT+8）
@@ -751,12 +771,21 @@ final isPermanent = !claims.containsKey('license_expires_at');
 | `SUSPENDED_LICENSE` | 423 | `license.status = suspended` 或 `cancelled` | 顯示「授權已被停用」，引導聯絡客服 |
 | `EXPIRED_LICENSE` | 410 | 已過期且超出寬限期 | 顯示「授權已過期」，引導續約 |
 | `LICENSE_NOT_ACTIVE` | 403 | 其他無法使用的狀態 | 顯示通用錯誤 |
-| `TOKEN_REQUIRED` | 500 | 後台未啟用 offline token（`config/licensing.php` `offline_token.enabled=false`） | 後台設定問題，App 無法處理 |
-| `MISSING_CONTENT_KEY` | 500 | License 對應的 Scope 沒有綁定 ContentEncryptionKey | 後台設定問題 |
 | `USAGE_LIMIT_REACHED` | 409 | 已達 `max_usages` | 顯示「此授權已綁定其他裝置」 |
 | `FINGERPRINT_CONFLICT` | 409 | unique scope 設為 `global` 時，同 fingerprint 已註冊在別的 License | 罕見 |
-| `WRAP_FAILED` | 500 | ECDH / HKDF / XChaCha20 步驟失敗 | 後端內部錯誤 |
-| `TOKEN_ISSUE_FAILED` | 500 | PASETO 簽發失敗 | 後端內部錯誤 |
+| `SERVER_ERROR` | 500 | **任何後端內部錯誤**（詳見下方） | 顯示「伺服器暫時無法使用」，可重試 1-2 次 |
+
+##### `SERVER_ERROR` 涵蓋的內部情境
+
+依 [2.4 5xx 錯誤遮蔽政策](#️-5xx-錯誤遮蔽政策)，以下所有情境在 HTTP 層都**無法區分**（response 永遠是 `{code: "SERVER_ERROR", message: "Server error"}`），但會以不同 `internal_code` 記錄到後端 `api` log：
+
+| 內部分類（log 才看得到） | 觸發條件 | 根本原因 |
+|---|---|---|
+| `TOKEN_REQUIRED` | 後台 `config/licensing.php` 的 `offline_token.enabled = false` | 後台設定問題 |
+| `MISSING_CONTENT_KEY` | License 對應的 LicenseScope 沒有綁定 `content_encryption_key_id` | 後台設定問題 |
+| `WRAP_FAILED` | ECDH / HKDF / XChaCha20-Poly1305 任一步驟拋 Throwable | 後端密碼學實作 bug 或 libsodium 問題 |
+| `TOKEN_ISSUE_FAILED` | PASETO 簽發失敗（通常是 signing key 找不到或 private key 無效） | 後端金鑰基礎設施問題 |
+| `UNCAUGHT_EXCEPTION` | Controller 外層未捕獲的 Throwable（資料庫斷線、PHP fatal 等） | 由 `bootstrap/app.php` 的 exception handler 攔截 |
 
 **錯誤回應範例**：
 
@@ -785,6 +814,15 @@ final isPermanent = !claims.containsKey('license_expires_at');
   "error": {
     "code": "USAGE_LIMIT_REACHED",
     "message": "License has reached maximum usages"
+  }
+}
+
+// 500 SERVER_ERROR（任何 5xx 都是這個統一格式）
+{
+  "success": false,
+  "error": {
+    "code": "SERVER_ERROR",
+    "message": "Server error"
   }
 }
 
@@ -988,6 +1026,7 @@ License 狀態為 `grace`，回應中 `license.status = "grace"` 且 `license.gr
 | `EXPIRED_LICENSE` | 410 | 超出寬限期 | 顯示「授權已過期」並強制登出 |
 | `LICENSE_NOT_ACTIVE` | 403 | 其他不可用狀態 | 顯示通用錯誤 |
 | `FINGERPRINT_MISMATCH` | 403 | 此 License 下沒有符合該 fingerprint 的 active usage（可能已被 revoke 或換過裝置） | 強制重新呼叫 `activate`；若仍失敗則引導聯絡客服 |
+| `SERVER_ERROR` | 500 | 資料庫斷線、PHP fatal 或其他未捕獲的 Throwable | 指數退避重試 1-2 次；詳見 [2.4 5xx 錯誤遮蔽政策](#️-5xx-錯誤遮蔽政策) |
 
 **錯誤回應範例**：
 
@@ -1007,6 +1046,15 @@ License 狀態為 `grace`，回應中 `license.status = "grace"` 且 `license.gr
   "error": {
     "code": "EXPIRED_LICENSE",
     "message": "License is expired"
+  }
+}
+
+// 500 SERVER_ERROR
+{
+  "success": false,
+  "error": {
+    "code": "SERVER_ERROR",
+    "message": "Server error"
   }
 }
 ```
@@ -1529,13 +1577,10 @@ class LicenseApiException implements Exception {
 | `SUSPENDED_LICENSE` | 「此授權已被停用，請聯絡客服」 | ❌ | 強制登出，不允許重試 |
 | `EXPIRED_LICENSE` | 「授權已過期，請續約」 | ❌ | 強制登出，引導續約 |
 | `LICENSE_NOT_ACTIVE` | 「授權尚未啟用或狀態異常」 | ❌ | 顯示並聯絡客服 |
-| `TOKEN_REQUIRED` | 「系統設定錯誤，請聯絡客服」 | ❌ | 後台問題 |
-| `MISSING_CONTENT_KEY` | 「系統設定錯誤，請聯絡客服」 | ❌ | 後台問題 |
 | `USAGE_LIMIT_REACHED` | 「此授權已綁定其他裝置」 | ❌ | 提示使用者先在舊裝置解除綁定（目前需聯絡客服處理） |
 | `FINGERPRINT_CONFLICT` | 「此裝置已綁定其他授權」 | ❌ | 罕見，聯絡客服 |
 | `FINGERPRINT_MISMATCH` | 「需要重新啟用授權」 | ✅ | 清除本地 token，讓使用者重新呼叫 activate |
-| `WRAP_FAILED` | 「系統錯誤」 | ✅（換新 ephemeral key 再試） | 記 log，連續失敗則聯絡客服 |
-| `TOKEN_ISSUE_FAILED` | 「系統錯誤」 | ✅ | 同上 |
+| `SERVER_ERROR` | 「伺服器暫時無法使用，請稍後再試」 | ✅（最多 1-2 次，間隔退避） | 後端統一遮蔽的 5xx；若連續失敗請同時提供發生時間給後端 log 查詢 |
 
 Flutter 實際做法（`wilson-e-book-english/lib/features/auth/presentation/providers/auth_provider.dart:213-226`）：
 
@@ -1558,10 +1603,11 @@ on LicenseApiException catch (e) {
 | 情境 | 重試策略 |
 |---|---|
 | 網路層錯誤（timeout、連線失敗） | 指數退避：1s → 2s → 4s → 放棄；每次重試顯示「重新連線中…」 |
-| HTTP 5xx | 同上 |
-| `WRAP_FAILED` / `TOKEN_ISSUE_FAILED` | 產生**新** ephemeral keypair 後重試 1 次；仍失敗則報錯 |
+| `SERVER_ERROR` (500) | 指數退避重試 1-2 次（建議帶**新的 ephemeral keypair**，因為可能是 ECDH 階段失敗）；仍失敗則顯示通用錯誤並請使用者稍後再試 |
 | `FINGERPRINT_MISMATCH`（validate） | 清除本地 token，引導使用者重新呼叫 activate（不是自動重試） |
-| 其他業務錯誤 | **不要重試**，重試只會得到相同結果 |
+| 其他業務錯誤（4xx） | **不要重試**，重試只會得到相同結果 |
+
+> 📝 **提醒**：因為 500 已被統一遮蔽成 `SERVER_ERROR`，App 端無法從 response 區分是「後端設定問題（不可重試）」還是「暫時性錯誤（可重試）」。建議統一走「指數退避重試 1-2 次」的保守策略，超過上限後顯示通用錯誤訊息並請使用者稍後再試或聯絡客服。若使用者能提供發生時間，後端可透過 `api` log channel 反查 `internal_code` 得知實際原因。
 
 ### 6.5 不要做的事
 
@@ -2204,6 +2250,26 @@ final mac = Mac(ctWithTag.sublist(ctWithTag.length - tagLength));
 4. 再呼叫 validate（相同 fingerprint），應收到 200
 5. 用不同 fingerprint 呼叫 validate，應收到 `FINGERPRINT_MISMATCH` 403
 6. 把後台 License 改成 `suspended`，再呼叫 validate，應收到 `SUSPENDED_LICENSE` 423
+
+#### Q11：為什麼 500 錯誤都只看到 `SERVER_ERROR`，看不到具體原因？
+
+這是**刻意的資安設計**。詳細原因會暴露後端設定細節（例如 `MISSING_CONTENT_KEY` 暗示 LicenseScope 沒綁 CEK、`TOKEN_REQUIRED` 暗示 config 被改過）、檔案路徑、SQL 或 stack trace，這些資訊對攻擊者有價值，對 App 端除錯幫助卻很有限。
+
+後端採用三層保護：
+
+1. **Controller 層**：`LicenseController::serverError()` helper 把 4 個業務面 5xx（`TOKEN_REQUIRED`、`MISSING_CONTENT_KEY`、`WRAP_FAILED`、`TOKEN_ISSUE_FAILED`）統一遮蔽
+2. **全域 exception handler**：`bootstrap/app.php` 的 `withExceptions` render callback 攔截所有 `api/licensing/v1/*` 下未捕獲的 Throwable，同樣遮蔽
+3. **Log 層**：兩層都會把完整 `internal_code`、`exception_class`、`exception_message`、`exception_trace` 記錄到 `api` channel (`storage/logs/api-YYYY-MM-DD.log`)，保留 30 天
+
+**App 端遇到 `SERVER_ERROR` 時的正確做法**：
+- 顯示「伺服器暫時無法使用，請稍後再試」
+- 內部紀錄發生時間、license_key（後幾碼）、fingerprint
+- 使用者回報時提供這些資訊給後端團隊，後端可透過 log 反查 `internal_code` 得知實際原因
+
+**不要做**：
+- ❌ 對 `SERVER_ERROR` 做 code 分流處理（永遠只會拿到同一個 code）
+- ❌ 連續無限重試（rate limit 會觸發，且很可能是設定問題無法自動恢復）
+- ❌ 把 `SERVER_ERROR` 回應內容直接顯示給使用者（`"Server error"` 不是好的 UX 文案）
 
 ---
 
