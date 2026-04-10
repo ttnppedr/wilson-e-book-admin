@@ -12,6 +12,16 @@ use LucaLongo\Licensing\Models\LicensingKey;
 class LicenseController extends BaseLicenseController
 {
     /**
+     * 無到期日授權 (永久授權) 的 offline token TTL (天)。
+     *
+     * 客戶端沒有 token refresh 機制，永久授權必須「一次啟用即長期可用」，
+     * 100 年 (36500 天) 實質上超過任何合理使用年限，等同永不過期。
+     * 有到期日的授權仍維持「TTL 綁定剩餘天數」的動態計算，確保 token
+     * 不會活得比授權本身久。
+     */
+    private const PERPETUAL_TOKEN_TTL_DAYS = 36500;
+
+    /**
      * ⚠️ 此方法複製自 vendor LicenseController::activate()，在固定位置插入
      *    client ephemeral key 驗證、ECDH content key wrap、以及把 wrapped
      *    metadata 注入 PASETO extra_claims 的邏輯。升級
@@ -53,10 +63,11 @@ class LicenseController extends BaseLicenseController
 
         // 把 TOKEN_REQUIRED 前置條件放在所有副作用（register、wrap）之前，
         // 避免 offline token 未啟用時白白消耗 usage seat 與進行 ECDH 運算。
-        if (! $license->isOfflineTokenEnabled() || ! $license->expires_at) {
+        // 允許 expires_at = null 的永久授權（TTL 於下方動態決定）。
+        if (! $license->isOfflineTokenEnabled()) {
             return $this->error(
                 'TOKEN_REQUIRED',
-                'Offline token must be enabled and license must have an expiry',
+                'Offline token must be enabled',
                 500,
             );
         }
@@ -94,11 +105,16 @@ class LicenseController extends BaseLicenseController
         sodium_memzero($rawContentKey);
 
         try {
-            $remainingDays = max(1, (int) ceil(now()->diffInDays($license->expires_at, absolute: true)));
+            // 有到期日：TTL 綁定授權剩餘天數，確保 token 不會活得比授權本身久。
+            // 無到期日 (永久授權)：TTL 設為 PERPETUAL_TOKEN_TTL_DAYS，實質上永不過期。
+            $ttlDays = $license->expires_at !== null
+                ? max(1, (int) ceil(now()->diffInDays($license->expires_at, absolute: true)))
+                : self::PERPETUAL_TOKEN_TTL_DAYS;
+
             // 把 wrapped metadata 作為 extra claim 塞進 PASETO token，由 signing
             // key 的 Ed25519 簽章保護，避免 client 篡改 wrap 參數。
             $token = $this->licensing->issueToken($license, $usage, [
-                'ttl_days' => $remainingDays,
+                'ttl_days' => $ttlDays,
                 'extra_claims' => [
                     'wrapped_content_key' => $wrapped,
                 ],

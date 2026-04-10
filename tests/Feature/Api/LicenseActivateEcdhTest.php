@@ -133,4 +133,36 @@ class LicenseActivateEcdhTest extends TestCase
         $response->assertStatus(500);
         $response->assertJsonPath('error.code', 'MISSING_CONTENT_KEY');
     }
+
+    /**
+     * 迴歸防護：永久授權 (expires_at = null) 不應被前置檢查攔截。
+     *
+     * 舊行為會回傳 TOKEN_REQUIRED (expires_at 是前置條件之一)。
+     * 變更後前置檢查只保留 offline token 啟用判斷，null expires_at 可以穿過，
+     * 本測試讓請求穿過前置檢查後在下一關 (沒有 scope → 拿不到 content key) 停下。
+     * 只要 error code 是 MISSING_CONTENT_KEY 而不是 TOKEN_REQUIRED，就證明
+     * 「null expires_at 已能通過前置檢查」。
+     */
+    public function test_activate_does_not_reject_license_with_null_expires_at(): void
+    {
+        $licenseKey = 'TESTKEY'.bin2hex(random_bytes(6));
+        License::create([
+            'key_hash' => License::hashKey($licenseKey),
+            'status' => LicenseStatus::Active,
+            'activated_at' => now(),
+            'expires_at' => null,  // 永久授權：關鍵變更點
+            'max_usages' => 1,
+            'meta' => [],
+        ]);
+
+        $response = $this->postJson(self::ACTIVATE_URL, [
+            'license_key' => $licenseKey,
+            'fingerprint' => 'test-fp',
+            'client_ephemeral_public_key' => $this->freshClientPublicKeyB64(),
+        ]);
+
+        // 關鍵斷言：不是 TOKEN_REQUIRED（這是舊行為下會回的錯誤碼）。
+        $response->assertStatus(500);
+        $response->assertJsonPath('error.code', 'MISSING_CONTENT_KEY');
+    }
 }
