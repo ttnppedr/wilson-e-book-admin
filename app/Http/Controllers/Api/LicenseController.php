@@ -6,6 +6,7 @@ use App\Services\ContentKeyWrapper;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use LucaLongo\Licensing\Enums\LicenseStatus;
 use LucaLongo\Licensing\Http\Controllers\Api\LicenseController as BaseLicenseController;
 use LucaLongo\Licensing\Models\License;
 use LucaLongo\Licensing\Models\LicensingKey;
@@ -170,6 +171,37 @@ class LicenseController extends BaseLicenseController
         $data['name'] = $license->name;
 
         return $data;
+    }
+
+    /**
+     * 覆寫 vendor guardLicenseState() 拆分 suspended 與 cancelled。
+     *
+     * vendor 原版把兩者合併成同一個 SUSPENDED_LICENSE (423)，但 App 端需要對
+     * 這兩種情況做不同 UX 分流：cancelled 應清本地金鑰，suspended 應顯示 disabled
+     * 輸入框等待 admin 恢復。透過子類別動態分派，activate 與 validate endpoint
+     * （ValidateController extends LicenseController）都會套用此覆寫版本。
+     *
+     * 升級 masterix21/laravel-licensing 時須對齊 vendor 的 guardLicenseState() 邏輯。
+     */
+    protected function guardLicenseState(License $license): ?JsonResponse
+    {
+        if ($license->status === LicenseStatus::Cancelled) {
+            return $this->error('CANCELLED_LICENSE', 'License has been cancelled', 410);
+        }
+
+        if ($license->status === LicenseStatus::Suspended) {
+            return $this->error('SUSPENDED_LICENSE', 'License is suspended', 423);
+        }
+
+        if ($license->isExpired() && ! $license->isInGracePeriod()) {
+            return $this->error('EXPIRED_LICENSE', 'License is expired', 410);
+        }
+
+        if (! $license->isUsable()) {
+            return $this->error('LICENSE_NOT_ACTIVE', 'License is not active', 403);
+        }
+
+        return null;
     }
 
     /**

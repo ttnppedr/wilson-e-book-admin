@@ -382,10 +382,14 @@ curl -X POST https://license.wilson-ebook.com/api/licensing/v1/activate \
 | `active` | 正常使用中 | ✅ 成功 | ✅ 成功 |
 | `grace` | 已到期但在寬限期內 | ✅ 成功（含 `grace_until` claim） | ✅ 成功 |
 | `expired` | 寬限期結束 | ❌ `EXPIRED_LICENSE` | ❌ `EXPIRED_LICENSE` |
-| `suspended` | 被管理員暫停 | ❌ `SUSPENDED_LICENSE` | ❌ `SUSPENDED_LICENSE` |
-| `cancelled` | 被管理員取消 | ❌ `SUSPENDED_LICENSE` | ❌ `SUSPENDED_LICENSE` |
+| `suspended` | 被管理員暫停（可恢復） | ❌ `SUSPENDED_LICENSE` (423) | ❌ `SUSPENDED_LICENSE` (423) |
+| `cancelled` | 被管理員取消（不可恢復） | ❌ `CANCELLED_LICENSE` (410) | ❌ `CANCELLED_LICENSE` (410) |
 
 **關鍵行為**：`activate` 會自動將 `pending → active`，所以 App 端不需要另外呼叫「啟用」API；第一次 `activate` 就是啟用。
+
+**Suspended vs Cancelled 設計差異**：兩者都會阻擋 activate/validate，但 error code 與語意不同：
+- `SUSPENDED_LICENSE` 暗示「管理員介入後可恢復」，App 端應保留本地金鑰，顯示 disabled 輸入框（自動填入現有金鑰），等使用者按確認重試。管理員把 status 改回 `active` 或 `pending` 後，使用者下次重試即可成功。
+- `CANCELLED_LICENSE` 暗示「此授權不會再被恢復」，App 端應**清除**本地金鑰與憑證，讓使用者回到首次輸入授權碼畫面。
 
 ### 3.3 Usage 狀態生命週期
 
@@ -443,6 +447,37 @@ $ttlDays = $license->expires_at !== null
     ? max(1, (int) ceil(now()->diffInDays($license->expires_at, absolute: true)))
     : self::PERPETUAL_TOKEN_TTL_DAYS;
 ```
+
+### 3.6 Suspended 恢復流程
+
+`suspended` 與 `cancelled` 看似相似，但在 UX 與恢復機制上完全不同。本節描述 suspended 的設計意圖與管理員應該採取的動作。
+
+**設計語意**：
+- `suspended` 表示「管理員臨時停止這個授權，但可能稍後恢復」。App 端會**保留**本地金鑰與 content key，只彈出 auth overlay 擋住畫面（disabled 輸入框 + 自動填入既有金鑰 + 確認按鈕可點）。
+- `cancelled` 表示「管理員永久取消這個授權，不會再恢復」。App 端會**清除**所有本地憑證，回到首次輸入授權碼的畫面。
+
+**Admin 解除 suspended 的方式**：在 Filament 後台 LicenseResource 的 status 下拉選單中，把 status 從 `suspended` 改成：
+- `active`：直接恢復為正常使用狀態。使用者下次按「確認」時會呼叫 activate，`canActivate()` 為 false 會跳過狀態轉換，但 `guardLicenseState()` 通過（active 是 usable），後續流程（register usage、wrap content key、issue new token）照常執行，結果是取得一組新 token，UX 上看起來就是重新 authenticated。
+- `pending`：把 license 視為「尚未啟用」。使用者下次按「確認」時會呼叫 activate，`canActivate()` 為 true 會走完整啟用流程（pending → active）並發新 token。
+
+兩種方式對 App 端而言**完全一樣**（都是呼叫同一個 activate endpoint 且成功），差別只在後端狀態機的轉換路徑。實務上推薦 `active`，因為它避免 license 進入 pending 狀態時其他邏輯（例如對 pending 的特殊處理）產生副作用。
+
+**時序**：
+```
+1. Admin 把 license status 改成 suspended
+2. Flutter app 下一次呼叫 validate（啟動或 onAppResumed）收到 423 SUSPENDED_LICENSE
+3. App 彈出 auth overlay：標題「授權已暫停」、disabled 輸入框、自動填入既有金鑰
+4. 使用者按「確認」→ App 呼叫 activate → 仍收到 423（admin 還沒解除）
+5. App 顯示錯誤訊息「此授權仍被暫停」，overlay 保持 suspended 狀態
+6. Admin 把 license status 改成 active（或 pending）
+7. 使用者再按「確認」→ App 呼叫 activate → 收到 200 成功
+8. Overlay 自動關閉，使用者恢復正常使用
+```
+
+**注意事項**：
+- Suspended 期間 App 端**仍保留** C++ 層的 content key，恢復後不需要重新 ECDH 解包，UX 無縫
+- Admin 不需要透過任何 API 發通知給 App，狀態變更完全依賴「下次 validate / activate 呼叫」被動觸發
+- 如果使用者在 suspended 期間強制殺掉 app，下次啟動時 `_tryRestoreSession()` 仍會成功恢復 authenticated 狀態（因為本地 lease 還有效），然後 `validateLicense()` 會再次偵測到 suspended 並彈出 overlay
 
 ---
 
@@ -768,7 +803,8 @@ final isPermanent = !claims.containsKey('license_expires_at');
 | `VALIDATION_FAILED` | 422 | 缺少必填欄位／型別錯誤 | 修正程式邏輯，不是使用者錯誤 |
 | `INVALID_EPHEMERAL_KEY` | 400 | `client_ephemeral_public_key` base64 解碼失敗 或長度不是 32 bytes | 檢查 X25519 實作；不該發生在正常情況 |
 | `INVALID_KEY` | 404 | License key 查無此筆（最常見原因：**沒移除 dash**） | 顯示「授權碼無效」，引導使用者重新輸入 |
-| `SUSPENDED_LICENSE` | 423 | `license.status = suspended` 或 `cancelled` | 顯示「授權已被停用」，引導聯絡客服 |
+| `SUSPENDED_LICENSE` | 423 | `license.status = suspended` | 保留本地金鑰，顯示 disabled 輸入框（自動填入金鑰），允許按確認重試 |
+| `CANCELLED_LICENSE` | 410 | `license.status = cancelled` | **清除**本地金鑰與憑證，回到首次輸入授權碼畫面 |
 | `EXPIRED_LICENSE` | 410 | 已過期且超出寬限期 | 顯示「授權已過期」，引導續約 |
 | `LICENSE_NOT_ACTIVE` | 403 | 其他無法使用的狀態 | 顯示通用錯誤 |
 | `USAGE_LIMIT_REACHED` | 409 | 已達 `max_usages` | 顯示「此授權已綁定其他裝置」 |
@@ -1022,7 +1058,8 @@ License 狀態為 `grace`，回應中 `license.status = "grace"` 且 `license.gr
 |---|---|---|---|
 | `VALIDATION_FAILED` | 422 | 缺少必填欄位 | 修正程式邏輯 |
 | `INVALID_KEY` | 404 | License 不存在（常見原因：**沒移除 dash**） | 顯示「授權碼無效」 |
-| `SUSPENDED_LICENSE` | 423 | `suspended` 或 `cancelled` | 顯示「授權已被停用」並強制登出 |
+| `SUSPENDED_LICENSE` | 423 | `license.status = suspended` | 彈出 auth overlay，disabled 輸入框 + 自動填入現有金鑰，允許按「確認」重試；保留本地金鑰與 content key |
+| `CANCELLED_LICENSE` | 410 | `license.status = cancelled` | 清除本地金鑰、content key 與憑證，回到首次輸入授權碼畫面 |
 | `EXPIRED_LICENSE` | 410 | 超出寬限期 | 顯示「授權已過期」並強制登出 |
 | `LICENSE_NOT_ACTIVE` | 403 | 其他不可用狀態 | 顯示通用錯誤 |
 | `FINGERPRINT_MISMATCH` | 403 | 此 License 下沒有符合該 fingerprint 的 active usage（可能已被 revoke 或換過裝置） | 強制重新呼叫 `activate`；若仍失敗則引導聯絡客服 |
@@ -1560,8 +1597,10 @@ class LicenseApiException implements Exception {
   bool get isInvalidKey => statusCode == 404;
   bool get isUsageLimitReached => statusCode == 409;
   bool get isRevoked => statusCode == 403;
-  bool get isExpired => statusCode == 410;
-  bool get isSuspended => statusCode == 423;
+  // 410 同時用於 EXPIRED_LICENSE 與 CANCELLED_LICENSE，必須以 errorCode 區分
+  bool get isExpired => errorCode == 'EXPIRED_LICENSE';
+  bool get isCancelled => errorCode == 'CANCELLED_LICENSE';
+  bool get isSuspended => errorCode == 'SUSPENDED_LICENSE';
 }
 ```
 
@@ -1574,7 +1613,8 @@ class LicenseApiException implements Exception {
 | `VALIDATION_FAILED` | 「系統錯誤」（不是使用者錯） | ❌ | 記 log，通知開發團隊 |
 | `INVALID_EPHEMERAL_KEY` | 「系統錯誤」 | ❌ | 記 log，可能是 App 端密碼學套件 bug |
 | `INVALID_KEY` | 「授權碼無效，請確認輸入」 | ❌（除非使用者改輸入） | 讓使用者重新輸入 |
-| `SUSPENDED_LICENSE` | 「此授權已被停用，請聯絡客服」 | ❌ | 強制登出，不允許重試 |
+| `SUSPENDED_LICENSE` | 「此授權已被暫停，請洽管理員」 | ✅ | 保留本地金鑰；顯示 disabled 輸入框（自動填入現有金鑰），允許按「確認」重試。Admin 把 status 改回 active/pending 後，使用者下次重試即成功 |
+| `CANCELLED_LICENSE` | 「此授權已被取消，請輸入新的授權碼」 | ❌ | 清除本地金鑰、content key 與憑證，回到首次輸入授權碼畫面 |
 | `EXPIRED_LICENSE` | 「授權已過期，請續約」 | ❌ | 強制登出，引導續約 |
 | `LICENSE_NOT_ACTIVE` | 「授權尚未啟用或狀態異常」 | ❌ | 顯示並聯絡客服 |
 | `USAGE_LIMIT_REACHED` | 「此授權已綁定其他裝置」 | ❌ | 提示使用者先在舊裝置解除綁定（目前需聯絡客服處理） |
@@ -1582,15 +1622,31 @@ class LicenseApiException implements Exception {
 | `FINGERPRINT_MISMATCH` | 「需要重新啟用授權」 | ✅ | 清除本地 token，讓使用者重新呼叫 activate |
 | `SERVER_ERROR` | 「伺服器暫時無法使用，請稍後再試」 | ✅（最多 1-2 次，間隔退避） | 後端統一遮蔽的 5xx；若連續失敗請同時提供發生時間給後端 log 查詢 |
 
-Flutter 實際做法（`wilson-e-book-english/lib/features/auth/presentation/providers/auth_provider.dart:213-226`）：
+Flutter 實際做法（`wilson-e-book-english/lib/features/auth/presentation/providers/auth_provider.dart`）：
 
 ```dart
 on LicenseApiException catch (e) {
+  // Cancelled：清資源、回到 unauthenticated
+  if (e.errorCode == 'CANCELLED_LICENSE') {
+    await _handleCancelled();
+    return;
+  }
+  // Suspended 重試失敗：保持 suspended 狀態與 prefilledCode 不動
+  if (e.errorCode == 'SUSPENDED_LICENSE' && wasSuspended) {
+    state = AuthState(
+      status: AuthStatus.suspended,
+      errorMessage: '此授權仍被暫停，請聯絡管理員',
+      prefilledCode: previousPrefilled,
+    );
+    return;
+  }
+
   final message = switch (e.errorCode) {
     'INVALID_KEY' => '授權碼無效',
     'EXPIRED_LICENSE' => '授權碼已過期',
     'USAGE_LIMIT_REACHED' => '此授權碼已綁定其他裝置',
-    'SUSPENDED_LICENSE' => '此授權碼已被停用',
+    'SUSPENDED_LICENSE' => '此授權碼已被暫停',
+    'CANCELLED_LICENSE' => '此授權碼已被取消',
     'LICENSE_NOT_ACTIVE' => '此授權碼尚未啟用',
     _ => '認證失敗，請稍後再試',
   };
@@ -2250,6 +2306,9 @@ final mac = Mac(ctWithTag.sublist(ctWithTag.length - tagLength));
 4. 再呼叫 validate（相同 fingerprint），應收到 200
 5. 用不同 fingerprint 呼叫 validate，應收到 `FINGERPRINT_MISMATCH` 403
 6. 把後台 License 改成 `suspended`，再呼叫 validate，應收到 `SUSPENDED_LICENSE` 423
+7. 把後台 License 改成 `cancelled`，再呼叫 validate，應收到 `CANCELLED_LICENSE` 410
+8. 把 `suspended` 的 license 改回 `pending`，用同一組 key + fingerprint 呼叫 activate，應成功（驗證「admin 解除暫停」的恢復路徑）
+9. 把 `suspended` 的 license 改回 `active`（跳過 pending），用同一組 key + fingerprint 呼叫 activate，應成功並取得新 token（驗證「admin 直接設為 active」的恢復路徑）
 
 #### Q11：為什麼 500 錯誤都只看到 `SERVER_ERROR`，看不到具體原因？
 
@@ -2278,8 +2337,8 @@ final mac = Mac(ctWithTag.sublist(ctWithTag.length - tagLength));
 ### 後端原始碼
 
 - `routes/api.php` — 路由定義
-- `app/Http/Controllers/Api/LicenseController.php` — Activate with ECDH
-- `app/Http/Controllers/Api/ValidateController.php` — Validate with heartbeat
+- `app/Http/Controllers/Api/LicenseController.php` — Activate with ECDH；同時覆寫 `guardLicenseState()` 拆分 suspended/cancelled 為兩個 error code
+- `app/Http/Controllers/Api/ValidateController.php` — Validate with heartbeat（透過 class 繼承自動使用上面覆寫的 guardLicenseState）
 - `app/Services/ContentKeyWrapper.php` — ECDH + HKDF + XChaCha20 包裝
 - `app/Services/WilsonPasetoTokenService.php` — PASETO 簽發（支援 `extra_claims`）
 - `app/Services/LicenseKeyGenerator.php` — 授權碼產生與格式化
