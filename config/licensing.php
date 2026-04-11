@@ -1,11 +1,11 @@
 <?php
 
+use App\Models\License;
 use App\Models\LicenseScope;
+use App\Models\LicenseUsage;
 use App\Services\LicenseKeyGenerator;
 use App\Services\WilsonPasetoTokenService;
-use App\Models\License;
 use LucaLongo\Licensing\Models\LicenseRenewal;
-use App\Models\LicenseUsage;
 use LucaLongo\Licensing\Models\LicensingAuditLog;
 use LucaLongo\Licensing\Models\LicensingKey;
 use LucaLongo\Licensing\Services\EncryptedLicenseKeyRegenerator;
@@ -83,6 +83,7 @@ return [
     ],
 
     'rate_limit' => [
+        'activate_per_minute' => 10,
         'validate_per_minute' => 60,
         'token_per_minute' => 20,
         'register_per_minute' => 30,

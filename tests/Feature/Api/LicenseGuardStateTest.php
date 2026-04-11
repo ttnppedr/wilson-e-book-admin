@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use LucaLongo\Licensing\Enums\LicenseStatus;
 use LucaLongo\Licensing\Models\License;
+use Tests\Concerns\MocksLicenseTokenVerifier;
 use Tests\TestCase;
 
 /**
@@ -22,6 +23,7 @@ use Tests\TestCase;
  */
 class LicenseGuardStateTest extends TestCase
 {
+    use MocksLicenseTokenVerifier;
     use RefreshDatabase;
 
     private const ACTIVATE_URL = '/api/licensing/v1/activate';
@@ -63,8 +65,9 @@ class LicenseGuardStateTest extends TestCase
     public function test_validate_returns_cancelled_license_for_cancelled_status(): void
     {
         $licenseKey = $this->makeLicense(LicenseStatus::Cancelled);
+        $this->acceptAnyTokenFor($licenseKey, 'test-fp');
 
-        $response = $this->postJson(self::VALIDATE_URL, [
+        $response = $this->postValidateWithToken([
             'license_key' => $licenseKey,
             'fingerprint' => 'test-fp',
         ]);
@@ -76,8 +79,9 @@ class LicenseGuardStateTest extends TestCase
     public function test_validate_returns_suspended_license_for_suspended_status(): void
     {
         $licenseKey = $this->makeLicense(LicenseStatus::Suspended);
+        $this->acceptAnyTokenFor($licenseKey, 'test-fp');
 
-        $response = $this->postJson(self::VALIDATE_URL, [
+        $response = $this->postValidateWithToken([
             'license_key' => $licenseKey,
             'fingerprint' => 'test-fp',
         ]);
@@ -89,8 +93,9 @@ class LicenseGuardStateTest extends TestCase
     public function test_validate_returns_expired_license_for_expired_status(): void
     {
         $licenseKey = $this->makeLicense(LicenseStatus::Expired, now()->subDays(10));
+        $this->acceptAnyTokenFor($licenseKey, 'test-fp');
 
-        $response = $this->postJson(self::VALIDATE_URL, [
+        $response = $this->postValidateWithToken([
             'license_key' => $licenseKey,
             'fingerprint' => 'test-fp',
         ]);
@@ -140,8 +145,9 @@ class LicenseGuardStateTest extends TestCase
         // 即使 expires_at 已經過去，cancelled 狀態的 license 仍應回報 CANCELLED_LICENSE
         // 而不是 EXPIRED_LICENSE，因為 cancelled 是更強的終態
         $licenseKey = $this->makeLicense(LicenseStatus::Cancelled, now()->subDays(10));
+        $this->acceptAnyTokenFor($licenseKey, 'test-fp');
 
-        $response = $this->postJson(self::VALIDATE_URL, [
+        $response = $this->postValidateWithToken([
             'license_key' => $licenseKey,
             'fingerprint' => 'test-fp',
         ]);
@@ -153,8 +159,9 @@ class LicenseGuardStateTest extends TestCase
     public function test_suspended_takes_precedence_over_expired_check(): void
     {
         $licenseKey = $this->makeLicense(LicenseStatus::Suspended, now()->subDays(10));
+        $this->acceptAnyTokenFor($licenseKey, 'test-fp');
 
-        $response = $this->postJson(self::VALIDATE_URL, [
+        $response = $this->postValidateWithToken([
             'license_key' => $licenseKey,
             'fingerprint' => 'test-fp',
         ]);

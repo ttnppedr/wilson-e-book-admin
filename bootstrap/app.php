@@ -4,6 +4,7 @@ use App\Http\Middleware\LogApiCall;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -47,6 +48,20 @@ return Application::configure(basePath: dirname(__DIR__))
             if ($e instanceof ValidationException) {
                 return null;
             }
+
+            // Rate limit 超過：轉成專案統一的 `{success, error}` 格式，保留 Retry-After
+            if ($e instanceof ThrottleRequestsException) {
+                $retryAfter = $e->getHeaders()['Retry-After'] ?? 60;
+
+                return response()->json([
+                    'success' => false,
+                    'error' => [
+                        'code' => 'RATE_LIMITED',
+                        'message' => 'Too many requests',
+                    ],
+                ], 429, ['Retry-After' => (string) $retryAfter]);
+            }
+
             if ($e instanceof HttpExceptionInterface && $e->getStatusCode() < 500) {
                 return null;
             }
