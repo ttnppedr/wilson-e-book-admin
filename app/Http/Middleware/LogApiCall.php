@@ -26,6 +26,7 @@ class LogApiCall
             'duration_ms' => $duration,
             'ip' => $request->ip(),
             'user_agent' => $request->userAgent(),
+            'headers' => $request->headers->all(),
             'request' => $request->except(['password']),
             'response' => $response instanceof JsonResponse
                 ? $response->getData(assoc: true)

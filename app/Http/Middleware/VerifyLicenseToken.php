@@ -20,7 +20,7 @@ use Throwable;
  *   3. 交叉比對 token 的 `license_key_hash` 與 `usage_fingerprint` 是否對應 request body
  *   4. 任何失敗一律回 401 `INVALID_TOKEN`,不細分原因以避免 oracle attack
  *
- * 注意:token 刻意走 Authorization header 而不放 body,避免被 `LogApiCall` 寫進 api log。
+ * 注意:token 走 Authorization header 傳遞,`LogApiCall` 會將完整 headers(含此 Authorization)寫進 api log,debug 時可以直接在 log 檔看到。
  */
 class VerifyLicenseToken
 {
