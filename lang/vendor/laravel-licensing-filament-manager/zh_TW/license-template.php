@@ -20,6 +20,7 @@ return [
         'entitlements' => '權限',
         'meta' => '中繼資料',
         'licenses_count' => '授權數',
+        'days' => ':count 天',
     ],
 
     'form' => [

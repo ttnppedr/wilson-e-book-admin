@@ -6,6 +6,7 @@ use App\Models\LicenseUsage;
 use App\Services\LicenseKeyGenerator;
 use App\Services\WilsonPasetoTokenService;
 use LucaLongo\Licensing\Models\LicenseRenewal;
+use LucaLongo\Licensing\Models\LicenseTemplate;
 use LucaLongo\Licensing\Models\LicensingAuditLog;
 use LucaLongo\Licensing\Models\LicensingKey;
 use LucaLongo\Licensing\Services\EncryptedLicenseKeyRegenerator;
@@ -19,6 +20,7 @@ return [
         'license' => License::class,
         'license_usage' => LicenseUsage::class,
         'license_renewal' => LicenseRenewal::class,
+        'license_template' => LicenseTemplate::class,
         'licensing_key' => LicensingKey::class,
         'audit_log' => LicensingAuditLog::class,
     ],
@@ -41,6 +43,10 @@ return [
         'grace_days' => 14,
         'usage_inactivity_auto_revoke_days' => null, // null to disable
         'unique_usage_scope' => 'license', // license | global
+    ],
+
+    'templates' => [
+        'enabled' => false,
     ],
 
     'trials' => [

@@ -9,12 +9,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 專案概述
 
-Wilson 電子書管理後台，基於 Laravel 12 + Filament v4 建構，整合 `masterix21/laravel-licensing` 授權管理系統。主要功能為管理電子書產品的軟體授權（License Scope → License → License Usage）。
+Wilson 電子書管理後台，基於 Laravel 13 + Filament v5 建構，整合 `masterix21/laravel-licensing` 2.0 授權管理系統。主要功能為管理電子書產品的軟體授權（License Scope → License → License Usage）。
 
 ## 架構
 
-- **管理面板**: Filament v4，路徑 `/admin`，設定在 `app/Providers/Filament/AdminPanelProvider.php`
-- **授權系統**: `masterix21/laravel-licensing` + `laravel-licensing-filament-manager`，兩層架構：LicenseScope（產品/版本）→ License（個別授權）→ LicenseUsage（席位）。已移除 LicenseTemplate 中間層
+- **管理面板**: Filament v5，路徑 `/admin`，設定在 `app/Providers/Filament/AdminPanelProvider.php`
+- **授權系統**: `masterix21/laravel-licensing` 2.0 + `laravel-licensing-filament-manager`，兩層架構：LicenseScope（產品/版本）→ License（個別授權）→ LicenseUsage（席位）。Vendor 2.0 重新引入 LicenseTemplate，但本專案刻意不使用（`license_templates` 表已刪除、`config('licensing.templates.enabled')` 設為 `false`）
 - **Content Encryption Key**: 掛在 LicenseScope 上（`content_encryption_key_id`），每個產品/版本對應一把加密金鑰，啟用 API 透過 `License → Scope → CEK` 取得
 - **授權 enum 翻譯**: 在 `app/Providers/AppServiceProvider.php` 透過 `TextColumn::configureUsing` 和 `Select::configureUsing` 全域翻譯
 - **翻譯檔**: 套件有兩個翻譯 namespace（`laravel-licensing-filament-manager` 和 `licensing-filament-manager`），zh_TW 翻譯分別在 `lang/vendor/` 下對應的兩個目錄
@@ -28,7 +28,7 @@ Wilson 電子書管理後台，基於 Laravel 12 + Filament v4 建構，整合 `
 - Migration 執行前先檢查外鍵依賴順序與 MySQL 索引名稱長度限制（64 字元）
 - 不要用自訂類別覆寫來迴避翻譯或顯示問題，優先找根本原因
 - `config/licensing-filament-manager.php` 的 `licensed_entities` 尚未設定
-- LicenseTemplate 已移除（`license_templates` 表已刪除），不要再引用 Template 相關的類別或欄位
+- LicenseTemplate：vendor 2.0 重新引入 Template 功能，但本專案刻意不使用。`license_templates` 表已刪除，`config/licensing.php` 中 `templates.enabled` 設為 `false`。`CustomLicensingPlugin` 已覆寫 `getWidgets()` 以避免 vendor widget 參照 Template。若需啟用 Template，須先還原 migration 並更新 config
 
 <laravel-boost-guidelines>
 === foundation rules ===
