@@ -113,7 +113,8 @@ class LicenseScopeResource extends BaseLicenseScopeResource
                     ->label(__('laravel-licensing-filament-manager::common.actions.delete')),
             ])
             ->toolbarActions([])
-            ->defaultSort('created_at', 'desc');
+            ->defaultSort('created_at', 'desc')
+            ->poll('60s');
     }
 
     public static function getRelations(): array

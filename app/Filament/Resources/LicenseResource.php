@@ -207,7 +207,8 @@ class LicenseResource extends BaseLicenseResource
                     ->visible(fn (License $record) => $record->status === LicenseStatus::Pending),
             ])
             ->toolbarActions([])
-            ->defaultSort('created_at', 'desc');
+            ->defaultSort('created_at', 'desc')
+            ->poll('60s');
     }
 
     public static function getRelations(): array

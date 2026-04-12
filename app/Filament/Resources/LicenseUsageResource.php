@@ -140,7 +140,8 @@ class LicenseUsageResource extends BaseLicenseUsageResource
                 EditAction::make()
                     ->label(__('laravel-licensing-filament-manager::common.actions.edit')),
             ])
-            ->defaultSort('registered_at', 'desc');
+            ->defaultSort('registered_at', 'desc')
+            ->poll('60s');
     }
 
     public static function getPages(): array
