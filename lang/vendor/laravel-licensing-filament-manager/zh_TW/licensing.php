@@ -45,6 +45,8 @@ return [
             'expiring_soon_description' => '未來 30 天內到期的啟用中授權',
             'license_templates' => '授權範本',
             'license_templates_description' => '啟用中的授權範本',
+            'license_scopes' => '授權範圍',
+            'license_scopes_description' => '啟用中的授權範圍',
         ],
         'recent_usages' => [
             'heading' => '最近的授權使用',
