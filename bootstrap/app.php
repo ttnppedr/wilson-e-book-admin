@@ -40,7 +40,7 @@ return Application::configure(basePath: dirname(__DIR__))
          * 偵測到這些情境時會 return null，讓 Laravel 走預設處理。
          */
         $exceptions->render(function (Throwable $e, Request $request) {
-            if (! $request->is('api/licensing/v1/*')) {
+            if (! $request->is('api/licensing/v1/*', 'api/v1/*')) {
                 return null;
             }
 

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\LicenseController;
 use App\Http\Controllers\Api\ValidateController;
+use App\Http\Controllers\Api\WordwallController;
 use App\Http\Middleware\VerifyLicenseToken;
 use Illuminate\Support\Facades\Route;
 
@@ -20,4 +21,11 @@ Route::prefix('licensing/v1')
         Route::post('validate', [ValidateController::class, 'validateLicense'])
             ->middleware(['throttle:licensing-validate', VerifyLicenseToken::class])
             ->name('licensing.validate');
+    });
+
+Route::prefix('v1')
+    ->group(function (): void {
+        Route::post('wordwalls', WordwallController::class)
+            ->middleware(['throttle:api-wordwall', VerifyLicenseToken::class])
+            ->name('v1.wordwalls');
     });

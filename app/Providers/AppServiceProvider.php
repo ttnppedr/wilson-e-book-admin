@@ -42,6 +42,9 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('licensing-validate', fn (Request $request) => Limit::perMinute(
             (int) config('licensing.rate_limit.validate_per_minute', 60)
         )->by($this->licensingRateLimitKey($request)));
+
+        RateLimiter::for('api-wordwall', fn (Request $request) => Limit::perMinute(60)
+            ->by($this->licensingRateLimitKey($request)));
     }
 
     /**
