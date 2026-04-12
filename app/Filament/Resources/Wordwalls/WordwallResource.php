@@ -46,8 +46,10 @@ class WordwallResource extends Resource
                     ->label('Resource 網址')
                     ->searchable(),
                 TextColumn::make('sort')
-                    ->label('排序'),
+                    ->label('排序')
+                ->sortable(),
             ])
+            ->defaultSort('sort')
             ->reorderable('sort')
             ->paginated(false)
             ->recordActions([
