@@ -139,19 +139,19 @@ class LicenseResource extends BaseLicenseResource
 
                 Tables\Columns\TextColumn::make('activated_at')
                     ->label(__('laravel-licensing-filament-manager::license.fields.activated_at'))
-                    ->dateTime('d/m/Y H:i')
+                    ->dateTime('Y-m-d H:i:s')
                     ->sortable()
                     ->placeholder(__('laravel-licensing-filament-manager::common.not_activated')),
 
                 Tables\Columns\TextColumn::make('expires_at')
                     ->label(__('laravel-licensing-filament-manager::license.fields.expires_at'))
-                    ->dateTime('d/m/Y H:i')
+                    ->dateTime('Y-m-d H:i:s')
                     ->sortable()
                     ->color(fn ($state) => $state && $state->isPast() ? 'danger' : 'success'),
 
                 Tables\Columns\TextColumn::make('created_at')
                     ->label(__('laravel-licensing-filament-manager::common.created_at'))
-                    ->dateTime('d/m/Y H:i')
+                    ->dateTime('Y-m-d H:i:s')
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])

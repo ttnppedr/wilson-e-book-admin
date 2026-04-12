@@ -29,21 +29,15 @@ class ExpiringLicenses extends TableWidget
                     ->limit(10)
             )
             ->columns([
-                Tables\Columns\TextColumn::make('uid')
-                    ->label(__('laravel-licensing-filament-manager::license.fields.id'))
-                    ->copyable()
-                    ->limit(12)
-                    ->searchable()
-                    ->sortable(),
+                Tables\Columns\TextColumn::make('name')
+                    ->label(__('laravel-licensing-filament-manager::licensing.fields.license_key')),
                 Tables\Columns\TextColumn::make('scope.name')
                     ->label(__('laravel-licensing-filament-manager::license.fields.license_scope'))
                     ->badge()
-                    ->color('info')
-                    ->sortable(),
+                    ->color('info'),
                 Tables\Columns\TextColumn::make('expires_at')
                     ->label(__('laravel-licensing-filament-manager::licensing.fields.expires_at'))
-                    ->dateTime()
-                    ->sortable()
+                    ->dateTime('Y-m-d H:i:s')
                     ->color(fn ($record) => $record->expires_at?->diffInDays(now()) <= 7 ? 'danger' : 'warning'),
                 Tables\Columns\TextColumn::make('days_remaining')
                     ->label(__('laravel-licensing-filament-manager::licensing.fields.days_remaining'))

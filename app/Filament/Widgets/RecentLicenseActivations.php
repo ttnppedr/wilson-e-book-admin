@@ -26,26 +26,20 @@ class RecentLicenseActivations extends TableWidget
                     ->limit(10)
             )
             ->columns([
-                Tables\Columns\TextColumn::make('license.uid')
-                    ->label(__('laravel-licensing-filament-manager::license.fields.id'))
-                    ->tooltip(fn ($record) => $record->license?->id)
-                    ->searchable()
-                    ->sortable(),
+                Tables\Columns\TextColumn::make('license.name')
+                    ->label(__('laravel-licensing-filament-manager::licensing.fields.license_key')),
                 Tables\Columns\TextColumn::make('license.scope.name')
                     ->label(__('laravel-licensing-filament-manager::license.fields.license_scope'))
                     ->badge()
-                    ->color('info')
-                    ->toggleable(),
+                    ->color('info'),
                 Tables\Columns\TextColumn::make('usage_fingerprint')
                     ->label(__('laravel-licensing-filament-manager::license-usage.fields.usage_fingerprint'))
                     ->copyable()
-                    ->limit(20)
-                    ->searchable(),
-                Tables\Columns\TextColumn::make('client_type')
-                    ->label(__('laravel-licensing-filament-manager::license-usage.fields.client_type'))
-                    ->badge()
-                    ->color('gray')
-                    ->toggleable(),
+                    ->limit(20),
+                Tables\Columns\TextColumn::make('user_agent')
+                    ->label(__('laravel-licensing-filament-manager::license-usage.fields.user_agent'))
+                    ->limit(30)
+                    ->tooltip(fn ($record) => $record->user_agent),
                 Tables\Columns\TextColumn::make('status')
                     ->label(__('laravel-licensing-filament-manager::license-usage.fields.status'))
                     ->badge()
@@ -55,12 +49,10 @@ class RecentLicenseActivations extends TableWidget
                     ]),
                 Tables\Columns\TextColumn::make('registered_at')
                     ->label(__('laravel-licensing-filament-manager::license-usage.fields.registered_at'))
-                    ->dateTime()
-                    ->sortable(),
+                    ->dateTime('Y-m-d H:i:s'),
                 Tables\Columns\TextColumn::make('last_seen_at')
                     ->label(__('laravel-licensing-filament-manager::license-usage.fields.last_seen_at'))
-                    ->dateTime()
-                    ->sortable()
+                    ->dateTime('Y-m-d H:i:s')
                     ->color(fn ($state) => $state && $state->diffInDays() > 7 ? 'warning' : 'success'),
             ])
             ->paginated(false);

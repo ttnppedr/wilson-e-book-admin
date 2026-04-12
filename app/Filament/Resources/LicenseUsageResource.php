@@ -73,11 +73,11 @@ class LicenseUsageResource extends BaseLicenseUsageResource
 
                 TextEntry::make('registered_at')
                     ->label(__('laravel-licensing-filament-manager::license-usage.fields.registered_at'))
-                    ->dateTime('Y/m/d H:i:s'),
+                    ->dateTime('Y-m-d H:i:s'),
 
                 TextEntry::make('last_seen_at')
                     ->label(__('laravel-licensing-filament-manager::license-usage.fields.last_seen_at'))
-                    ->dateTime('Y/m/d H:i:s'),
+                    ->dateTime('Y-m-d H:i:s'),
             ]);
     }
 
@@ -101,12 +101,12 @@ class LicenseUsageResource extends BaseLicenseUsageResource
 
             Tables\Columns\TextColumn::make('registered_at')
                 ->label(__('laravel-licensing-filament-manager::license-usage.fields.registered_at'))
-                ->dateTime('d/m/Y H:i')
+                ->dateTime('Y-m-d H:i:s')
                 ->sortable(),
 
             Tables\Columns\TextColumn::make('last_seen_at')
                 ->label(__('laravel-licensing-filament-manager::license-usage.fields.last_seen_at'))
-                ->dateTime('d/m/Y H:i')
+                ->dateTime('Y-m-d H:i:s')
                 ->sortable(),
         ];
     }
