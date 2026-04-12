@@ -5,10 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\Wordwall;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Testing\TestResponse;
 use LucaLongo\Licensing\Contracts\TokenVerifier;
-use LucaLongo\Licensing\Enums\LicenseStatus;
-use LucaLongo\Licensing\Models\License;
 use Mockery;
 use RuntimeException;
 use Tests\Concerns\MocksLicenseTokenVerifier;
@@ -17,8 +14,8 @@ use Tests\TestCase;
 /**
  * Wordwall List API feature 測試。
  *
- * 端點：POST /api/v1/wordwalls
- * 保護：throttle:api-wordwall + VerifyLicenseToken (PASETO bearer token + body 交叉比對)
+ * 端點：GET /api/v1/wordwalls
+ * 保護：throttle:api-wordwall + VerifyBearerToken (PASETO bearer token 簽章驗證)
  */
 class WordwallListTest extends TestCase
 {
@@ -27,44 +24,17 @@ class WordwallListTest extends TestCase
 
     private const WORDWALL_URL = '/api/v1/wordwalls';
 
-    private string $licenseKey;
-
-    private string $fingerprint = 'wordwall-test-fp';
-
     protected function setUp(): void
     {
         parent::setUp();
 
         Cache::flush();
-
-        $this->licenseKey = 'WORDWALL'.bin2hex(random_bytes(6));
-        License::create([
-            'key_hash' => License::hashKey($this->licenseKey),
-            'status' => LicenseStatus::Active,
-            'activated_at' => now(),
-            'expires_at' => now()->addDays(30),
-            'max_usages' => 1,
-            'meta' => [],
-        ]);
-
-        $this->acceptAnyTokenFor($this->licenseKey, $this->fingerprint);
-    }
-
-    private function postWordwallsWithToken(array $extraBody = []): TestResponse
-    {
-        return $this->withHeaders(['Authorization' => 'Bearer stub-bearer-token'])
-            ->postJson(self::WORDWALL_URL, array_merge([
-                'license_key' => $this->licenseKey,
-                'fingerprint' => $this->fingerprint,
-            ], $extraBody));
+        $this->acceptAnyBearerToken();
     }
 
     public function test_rejects_without_authorization_header(): void
     {
-        $response = $this->postJson(self::WORDWALL_URL, [
-            'license_key' => $this->licenseKey,
-            'fingerprint' => $this->fingerprint,
-        ]);
+        $response = $this->getJson(self::WORDWALL_URL);
 
         $response->assertStatus(401);
         $response->assertJsonPath('error.code', 'INVALID_TOKEN');
@@ -79,10 +49,7 @@ class WordwallListTest extends TestCase
         $this->app->instance(TokenVerifier::class, $verifier);
 
         $response = $this->withHeaders(['Authorization' => 'Bearer bad-token'])
-            ->postJson(self::WORDWALL_URL, [
-                'license_key' => $this->licenseKey,
-                'fingerprint' => $this->fingerprint,
-            ]);
+            ->getJson(self::WORDWALL_URL);
 
         $response->assertStatus(401);
         $response->assertJsonPath('error.code', 'INVALID_TOKEN');
@@ -90,7 +57,7 @@ class WordwallListTest extends TestCase
 
     public function test_returns_empty_list_when_no_wordwalls(): void
     {
-        $response = $this->postWordwallsWithToken();
+        $response = $this->getJsonWithToken(self::WORDWALL_URL);
 
         $response->assertOk();
         $response->assertJsonPath('data', []);
@@ -103,7 +70,7 @@ class WordwallListTest extends TestCase
         Wordwall::factory()->create(['resource_url' => 'https://wordwall.net/resource/111', 'sort' => 1]);
         Wordwall::factory()->create(['resource_url' => 'https://wordwall.net/resource/222', 'sort' => 2]);
 
-        $response = $this->postWordwallsWithToken();
+        $response = $this->getJsonWithToken(self::WORDWALL_URL);
 
         $response->assertOk();
         $response->assertJsonCount(3, 'data');
@@ -123,7 +90,7 @@ class WordwallListTest extends TestCase
     {
         Wordwall::factory()->create();
 
-        $response = $this->postWordwallsWithToken();
+        $response = $this->getJsonWithToken(self::WORDWALL_URL);
 
         $response->assertOk();
         $response->assertJsonStructure([
@@ -137,7 +104,7 @@ class WordwallListTest extends TestCase
     public function test_rate_limit_blocks_after_60_requests(): void
     {
         for ($i = 1; $i <= 60; $i++) {
-            $response = $this->postWordwallsWithToken();
+            $response = $this->getJsonWithToken(self::WORDWALL_URL);
             $this->assertNotSame(
                 429,
                 $response->status(),
@@ -145,7 +112,7 @@ class WordwallListTest extends TestCase
             );
         }
 
-        $response = $this->postWordwallsWithToken();
+        $response = $this->getJsonWithToken(self::WORDWALL_URL);
         $response->assertStatus(429);
         $response->assertJsonPath('error.code', 'RATE_LIMITED');
         $this->assertNotNull($response->headers->get('Retry-After'));

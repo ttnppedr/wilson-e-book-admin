@@ -50,7 +50,7 @@ class LicensingRateLimitTest extends TestCase
 
     /**
      * 建立一個 active license,只用於 validate rate limit 測試
-     * (讓請求能通過 VerifyLicenseToken middleware 階段)。
+     * (讓請求能通過 VerifyBearerToken middleware 階段)。
      */
     private function makeActiveLicense(): string
     {

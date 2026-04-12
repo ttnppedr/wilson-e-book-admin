@@ -44,7 +44,7 @@ class AppServiceProvider extends ServiceProvider
         )->by($this->licensingRateLimitKey($request)));
 
         RateLimiter::for('api-wordwall', fn (Request $request) => Limit::perMinute(60)
-            ->by($this->licensingRateLimitKey($request)));
+            ->by(sha1((string) $request->ip())));
     }
 
     /**
