@@ -25,6 +25,7 @@ return [
         'expires_at' => '到期時間',
         'meta' => '中繼資料',
         'key_visibility' => '金鑰取回',
+        'name' => '名稱',
     ],
 
     'actions' => [
@@ -45,6 +46,7 @@ return [
     'help' => [
         'expires_at' => '留空以根據範本預設值或範圍設定自動計算。',
         'template' => '範本控制最大使用次數、有效期、功能和權限。',
+        'name' => '標示此授權的使用者（例如：王小明）',
     ],
 
     'notifications' => [
@@ -60,15 +62,26 @@ return [
         'key_value' => '授權金鑰：:key',
     ],
 
+    'statuses' => [
+        'pending' => '待啟用',
+        'active' => '使用中',
+        'grace' => '寬限期',
+        'expired' => '已到期',
+        'suspended' => '已暫停',
+        'cancelled' => '已取消',
+    ],
+
     'relations' => [
         'usages' => '使用紀錄',
         'renewals' => '續約紀錄',
         'transfers' => '移轉紀錄',
+        'trials' => '試用紀錄',
     ],
 
     'security' => [
         'key_not_yet_generated' => '授權金鑰將在儲存後產生。',
         'key_retrievable' => '加密金鑰取回功能已啟用。',
         'key_not_retrievable' => '授權設定中已停用金鑰取回。',
+        'key_not_stored' => '此授權未儲存金鑰，僅新建立的授權才有金鑰可取回。',
     ],
 ];

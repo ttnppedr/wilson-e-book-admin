@@ -56,6 +56,10 @@ return [
     ],
 
     'perpetual' => '永久',
+    'unlimited' => '無限制',
+    'seats' => '席位',
+    'days' => '天',
+    'none' => '無',
     'rotation_days' => ':days 天',
     'disabled' => '已停用',
 ];

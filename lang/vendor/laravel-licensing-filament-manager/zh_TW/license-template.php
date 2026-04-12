@@ -2,12 +2,15 @@
 
 return [
     'fields' => [
+        'scope' => '授權範圍',
+        'global' => '全域',
         'name' => '範本名稱',
         'slug' => '代稱',
         'tier_level' => '層級',
         'parent_template' => '父範本',
         'is_active' => '啟用中',
         'license_duration_days' => '持續時間',
+        'default_max_usages' => '預設最大使用次數',
         'supports_trial' => '試用',
         'trial_duration_days' => '試用持續天數',
         'has_grace_period' => '寬限期',
@@ -16,6 +19,7 @@ return [
         'features' => '功能',
         'entitlements' => '權限',
         'meta' => '中繼資料',
+        'licenses_count' => '授權數',
     ],
 
     'form' => [
@@ -40,6 +44,7 @@ return [
         'license_duration_days' => '授權有效天數。留空表示無期限。',
         'trial_duration_days' => '試用期天數。',
         'grace_period_days' => '授權到期後至完全停用前的天數。',
+        'default_max_usages' => '每個授權的最大並行使用數',
     ],
 
     'days' => ':count 天',

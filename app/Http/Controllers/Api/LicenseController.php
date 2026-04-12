@@ -30,13 +30,13 @@ class LicenseController extends BaseLicenseController
      *    metadata 注入 PASETO extra_claims 的邏輯。升級
      *    masterix21/laravel-licensing 時，務必重新對齊 parent::activate() 的
      *    最新版本。
-     *    對齊版本：vendor/masterix21/laravel-licensing/src/Http/Controllers/Api/LicenseController.php
+     *    對齊版本：vendor 2.0.0
      */
     public function activate(Request $request): JsonResponse
     {
         $payload = $this->validate($request, [
             'license_key' => ['required', 'string'],
-            'fingerprint' => ['required', 'string'],
+            'fingerprint' => ['required', 'string', 'max:255'],
             'client_ephemeral_public_key' => ['required', 'string'],
             'metadata' => ['nullable', 'array'],
         ]);
@@ -181,7 +181,7 @@ class LicenseController extends BaseLicenseController
      * 輸入框等待 admin 恢復。透過子類別動態分派，activate 與 validate endpoint
      * （ValidateController extends LicenseController）都會套用此覆寫版本。
      *
-     * 升級 masterix21/laravel-licensing 時須對齊 vendor 的 guardLicenseState() 邏輯。
+     * 對齊版本：vendor 2.0.0
      */
     protected function guardLicenseState(License $license): ?JsonResponse
     {
@@ -209,6 +209,7 @@ class LicenseController extends BaseLicenseController
      *
      * vendor 的 findActiveSigning() 預設用 forScope(null) 只找無 scope 的 key，
      * 但本專案的 signing key 綁定 scope，需忽略 scope 限制查找。
+     * 對齊版本：vendor 2.0 — 改用 certificateAuthority->getRootPublicKey()。
      */
     protected function buildPublicKeyBundle(): ?array
     {
@@ -232,7 +233,7 @@ class LicenseController extends BaseLicenseController
             ], fn ($v) => $v !== null),
             'root' => array_filter([
                 'kid' => $rootKey->kid,
-                'public_key' => $rootKey->getPublicKey(),
+                'public_key' => $this->certificateAuthority->getRootPublicKey(),
                 'valid_from' => $rootKey->valid_from?->format('c'),
                 'valid_until' => $rootKey->valid_until?->format('c'),
             ], fn ($v) => $v !== null),

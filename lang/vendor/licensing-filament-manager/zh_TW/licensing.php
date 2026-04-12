@@ -9,6 +9,11 @@ return [
             'model_label' => '授權',
             'plural_model_label' => '授權',
         ],
+        'license_template' => [
+            'navigation_label' => '授權範本',
+            'model_label' => '授權範本',
+            'plural_model_label' => '授權範本',
+        ],
         'license_scope' => [
             'navigation_label' => '授權範圍',
             'model_label' => '授權範圍',
@@ -38,8 +43,8 @@ return [
             'total_usages_description' => '授權使用紀錄',
             'expiring_soon' => '即將到期',
             'expiring_soon_description' => '未來 30 天內到期的啟用中授權',
-            'license_scopes' => '授權範圍',
-            'license_scopes_description' => '可用的授權類型',
+            'license_templates' => '授權範本',
+            'license_templates_description' => '啟用中的授權範本',
         ],
         'recent_usages' => [
             'heading' => '最近的授權使用',

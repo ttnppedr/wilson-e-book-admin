@@ -23,7 +23,7 @@ use ParagonIE\Paseto\Protocol\Version4;
  *   邏輯並插入 extra claim 合併」的策略。
  *
  * ⚠️ 升級 masterix21/laravel-licensing 時務必重新對齊 parent::issue()。
- *    目前對齊版本：vendor/masterix21/laravel-licensing/src/Services/PasetoTokenService.php
+ *    對齊版本：vendor 2.0.0
  *    唯一差異在下方 `$claims = ...` 後方的 extra_claims 合併區塊。
  *
  * 設定方式：在 `config/licensing.php` 的 `offline_token.service` 指向此類別。
