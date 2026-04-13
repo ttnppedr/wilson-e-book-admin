@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(vendor/bin/sail bin:*)",
-      "mcp__laravel-boost__*"
+      "mcp__laravel-boost__*",
+      "WebFetch(domain:cloud.laravel.com)"
     ]
   },
   "enableAllProjectMcpServers": true,

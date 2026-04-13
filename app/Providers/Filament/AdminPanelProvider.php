@@ -37,7 +37,12 @@ class AdminPanelProvider extends PanelProvider
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
             ->widgets([])
             ->plugins([
-                CustomLicensingPlugin::make(),
+                CustomLicensingPlugin::make()
+                    ->navigationGroup('授權管理'),
+            ])
+            ->navigationGroups([
+                '授權管理',
+                '遊戲管理',
             ])
             ->middleware([
                 EncryptCookies::class,

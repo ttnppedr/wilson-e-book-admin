@@ -12,12 +12,15 @@ use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use UnitEnum;
 
 class WordwallResource extends Resource
 {
     protected static ?string $model = Wordwall::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+
+    protected static string|UnitEnum|null $navigationGroup = '遊戲管理';
 
     protected static ?string $pluralLabel = 'Wordwall';
 
@@ -47,7 +50,7 @@ class WordwallResource extends Resource
                     ->searchable(),
                 TextColumn::make('sort')
                     ->label('排序')
-                ->sortable(),
+                    ->sortable(),
             ])
             ->defaultSort('sort')
             ->reorderable('sort')
