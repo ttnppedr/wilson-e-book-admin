@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\LicenseUsageResource\Pages;
+use App\Models\LicenseUsage;
 use App\Services\LicenseKeyGenerator;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
@@ -10,10 +11,10 @@ use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseUsageResource as BaseLicenseUsageResource;
-use App\Models\LicenseUsage;
 
 /**
  * MVP 精簡版 LicenseUsageResource。
@@ -27,7 +28,7 @@ class LicenseUsageResource extends BaseLicenseUsageResource
         return null;
     }
 
-    public static function getRecordTitle(?Model $record): string|\Illuminate\Contracts\Support\Htmlable|null
+    public static function getRecordTitle(?Model $record): string|Htmlable|null
     {
         return $record?->license?->name;
     }
@@ -92,12 +93,10 @@ class LicenseUsageResource extends BaseLicenseUsageResource
             Tables\Columns\TextColumn::make('usage_fingerprint')
                 ->label(__('laravel-licensing-filament-manager::license-usage.fields.usage_fingerprint'))
                 ->copyable()
-                ->limit(24)
-                ->searchable(),
+                ->limit(24),
 
             Tables\Columns\TextColumn::make('ip')
-                ->label(__('laravel-licensing-filament-manager::license-usage.fields.ip'))
-                ->searchable(),
+                ->label(__('laravel-licensing-filament-manager::license-usage.fields.ip')),
 
             Tables\Columns\TextColumn::make('registered_at')
                 ->label(__('laravel-licensing-filament-manager::license-usage.fields.registered_at'))
@@ -130,7 +129,6 @@ class LicenseUsageResource extends BaseLicenseUsageResource
                         return LicenseKeyGenerator::format($key);
                     })
                     ->copyable()
-                    ->searchable()
                     ->sortable(),
                 ...static::usageColumns(),
             ])

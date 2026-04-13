@@ -126,7 +126,6 @@ class LicenseResource extends BaseLicenseResource
 
                 Tables\Columns\TextColumn::make('scope.name')
                     ->label(__('laravel-licensing-filament-manager::license.fields.license_scope'))
-                    ->searchable()
                     ->sortable()
                     ->badge()
                     ->color('info'),
@@ -148,12 +147,6 @@ class LicenseResource extends BaseLicenseResource
                     ->dateTime('Y-m-d H:i:s')
                     ->sortable()
                     ->color(fn ($state) => $state && $state->isPast() ? 'danger' : 'success'),
-
-                Tables\Columns\TextColumn::make('created_at')
-                    ->label(__('laravel-licensing-filament-manager::common.created_at'))
-                    ->dateTime('Y-m-d H:i:s')
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
@@ -175,7 +168,7 @@ class LicenseResource extends BaseLicenseResource
                     ),
 
                 Tables\Filters\Filter::make('expiring_soon')
-                    ->label(__('laravel-licensing-filament-manager::license.filters.expiring_soon'))
+                    ->label(__('laravel-licensing-filament-manager::license.filters.expiring_soon').'（30 天內到期）')
                     ->query(fn (Builder $query) => $query->whereBetween('expires_at', [now(), now()->addDays(30)])),
             ])
             ->recordActions([

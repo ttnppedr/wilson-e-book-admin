@@ -87,7 +87,6 @@ class LicenseScopeResource extends BaseLicenseScopeResource
 
                 Tables\Columns\TextColumn::make('name')
                     ->label(__('laravel-licensing-filament-manager::license-scope.fields.name'))
-                    ->searchable()
                     ->sortable()
                     ->weight('bold'),
 
