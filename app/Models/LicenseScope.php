@@ -6,9 +6,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 use LucaLongo\Licensing\Models\LicenseScope as BaseLicenseScope;
+use OwenIt\Auditing\Contracts\Auditable;
 
-class LicenseScope extends BaseLicenseScope
+class LicenseScope extends BaseLicenseScope implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $fillable = [
         'name',
         'slug',

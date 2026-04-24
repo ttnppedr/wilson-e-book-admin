@@ -96,7 +96,9 @@ return [
     ],
 
     'audit' => [
-        'enabled' => true,
+        // 改用 owen-it/laravel-auditing 作為唯一 audit 來源，避免雙軌混淆。
+        // 詳見 app/Models/License.php、LicenseScope.php、LicenseUsage.php 的 Auditable trait。
+        'enabled' => false,
         'store' => 'database', // database | file
         'retention_days' => 90,
         'hash_chain' => true, // Enable hash chaining for tamper-evidence

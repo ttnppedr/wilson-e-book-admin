@@ -8,6 +8,7 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use OwenIt\Auditing\Models\Audit;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -25,6 +26,12 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         License::observe(LicenseObserver::class);
+
+        // 守門員：LicenseUsage heartbeat 只更新被 $auditExclude 排除的 last_seen_at，
+        // 會產生 old_values/new_values 皆空的 audit 記錄；在此攔截避免雜訊污染稽核軌跡。
+        Audit::creating(function (Audit $audit): bool {
+            return ! (empty($audit->old_values) && empty($audit->new_values));
+        });
 
         /*
          * Licensing API rate limiters。

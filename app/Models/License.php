@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use LucaLongo\Licensing\Models\License as BaseLicense;
+use OwenIt\Auditing\Contracts\Auditable;
 
-class License extends BaseLicense
+class License extends BaseLicense implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $fillable = [
         'key_hash',
         'status',
