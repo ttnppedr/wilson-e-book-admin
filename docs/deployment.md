@@ -103,7 +103,121 @@ vendor/bin/sail artisan content-key:list
 
 ---
 
-## 7. 進階運維指令（非首次部署）
+## 7. 排程任務（狀態正確性必要）
+
+License 的 `status` 欄位**不會自動**隨 `expires_at` 轉換，必須依賴 `licensing:check-expirations` 排程每日執行，否則：
+
+- Filament Dashboard 的「Active Licenses」統計會把已過期但未轉換的授權算進來
+- `LicenseStatsOverview`、`ExpiringLicenses` widget、`LicenseScopeResource` 的計數欄位會浮報
+- API 驗證端不受影響（已使用 `isExpired()` 做 lazy 判斷）
+
+### 排程內容
+
+| 命令 | 執行時機 | 作用 |
+| --- | --- | --- |
+| `licensing:check-expirations` | 每日 02:00（`config('app.timezone')`，Asia/Taipei） | `Active` 且 `expires_at < now()` → `Grace`；`Grace` 且已過 grace days → `Expired` 並觸發 `LicenseExpired` event |
+
+註冊位置：`routes/console.php`；啟用開關：`config('licensing.scheduler.check_expirations.enabled')`；執行時刻：`config('licensing.scheduler.check_expirations.time')`。
+
+每次轉換會自動寫入 `audits` 表，`user_id` 為 `null`（代表系統觸發）。以 `WHERE user_id IS NULL` 可篩出所有系統自動變更。
+
+### 部署時必須新增作業系統排程觸發
+
+Laravel 的 `Schedule::command(...)` 只登錄排程清單，**實際觸發需要 OS 層每分鐘呼叫 `php artisan schedule:run`**；沒設這個觸發器，排程永遠不會執行。
+
+#### Linux / macOS（cron）
+
+主機直接執行 artisan：
+
+```bash
+# crontab -e
+* * * * * cd /path/to/wilson-e-book-admin && php artisan schedule:run >> /dev/null 2>&1
+```
+
+Production 用 Docker / Sail 部署時，從 host cron 進入容器執行：
+
+```bash
+* * * * * docker compose -f /path/to/docker-compose.yml exec -T laravel.test php artisan schedule:run >> /dev/null 2>&1
+```
+
+> `exec -T` 的 `-T` flag 用於 disable pseudo-TTY，cron 沒有 TTY，缺少此 flag 會**靜默失敗**。這是最常踩的雷。
+
+#### Windows
+
+Windows 沒有原生 cron，依部署方式選擇以下方案 A 或 B，或使用下一段的跨平台方案 C。
+
+**方案 A：Docker Desktop + Windows 工作排程器**
+
+Windows server 上跑 Docker Desktop（WSL2 backend）時的主流做法 — 由工作排程器每分鐘呼叫 `docker compose exec` 進入 Linux 容器執行 `schedule:run`。
+
+以系統管理員開啟 PowerShell：
+
+```powershell
+# 建立每分鐘觸發一次的工作排程
+schtasks /Create `
+  /SC MINUTE /MO 1 `
+  /TN "LaravelSchedule_WilsonAdmin" `
+  /TR "docker compose -f C:\path\to\wilson-e-book-admin\docker-compose.yml exec -T laravel.test php artisan schedule:run" `
+  /RU SYSTEM /F
+
+# 驗證：列出已建立的排程
+schtasks /Query /TN "LaravelSchedule_WilsonAdmin"
+
+# 手動觸發一次測試
+schtasks /Run /TN "LaravelSchedule_WilsonAdmin"
+
+# 移除（需要時）
+schtasks /Delete /TN "LaravelSchedule_WilsonAdmin" /F
+```
+
+> `/RU SYSTEM` 以系統帳號執行，免輸入密碼；但 Docker Desktop 若綁定使用者帳號才能連線，改用 `/RU "<user>" /RP "<password>"`。另外：Docker Desktop 須設為開機自動啟動，否則登入前排程會失敗。
+
+**方案 B：WSL2 內部用 cron**
+
+若 production 完全跑在 WSL2（Ubuntu 等發行版），可直接走 Linux cron 流程：
+
+```bash
+# 於 WSL2 的 Ubuntu shell 內
+sudo service cron start
+crontab -e
+# 加入：
+* * * * * cd /home/<user>/wilson-e-book-admin && php artisan schedule:run >> /dev/null 2>&1
+```
+
+> WSL2 的 cron 服務預設**不會隨 Windows 開機自動啟動**。擇一處理：
+> - 在 `/etc/wsl.conf` 加入 `[boot]` 段落與 `systemd=true`，重啟 WSL 後讓 systemd 接管 cron
+> - 或用 Windows 工作排程器建立「登入時觸發」的 task：`wsl -u root service cron start`
+
+#### 方案 C：常駐 `schedule:work`（跨平台通用）
+
+不想處理 OS 層 cron / 工作排程器時，可改用 `php artisan schedule:work` — 它本身就是輪詢執行到期排程的常駐程序，不依賴外部觸發器。用以下方式讓它常駐：
+
+| 環境 | 常駐方式 |
+| --- | --- |
+| Linux / macOS host | `supervisor` 或 `systemd` service |
+| Windows host（無 WSL） | 用 [NSSM](https://nssm.cc) 把指令包成 Windows 服務（開機自啟、失敗重啟） |
+| Docker 容器內 | 於 `docker-compose.yml` 加一個專跑 `schedule:work` 的 service，或在現有容器用 supervisor 管理 |
+| WSL2 內 | `systemd` service（需 `/etc/wsl.conf` 啟用 systemd） |
+
+適合純容器化部署或不想維護 OS 層排程器的情境。
+
+### 驗證
+
+```bash
+# 確認排程已註冊
+vendor/bin/sail artisan schedule:list
+
+# 手動觸發一次（不影響下一次排程時刻）
+vendor/bin/sail artisan licensing:check-expirations
+```
+
+預期輸出：`轉入 grace: N；轉入 expired: M`。
+
+> `onOneServer()` 需要 cache driver 支援 atomic locks。本專案預設 `CACHE_STORE=database` 已支援，若改用 `file` driver 需移除此設定或改用 redis/memcached。
+
+---
+
+## 8. 進階運維指令（非首次部署）
 
 以下指令在首次部署不需要，日常運維時視情況使用：
 
@@ -137,4 +251,13 @@ vendor/bin/sail artisan config:cache
 vendor/bin/sail artisan route:cache
 vendor/bin/sail artisan view:cache
 vendor/bin/sail artisan filament:optimize
+
+# 6. 排程觸發（OS 層一次性設定，依部署環境擇一，詳見第 7 節）
+#   Linux / macOS：crontab -e
+#     * * * * * cd /path/to/project && php artisan schedule:run >> /dev/null 2>&1
+#   Windows（PowerShell，以 Admin 執行）：
+#     schtasks /Create /SC MINUTE /MO 1 /TN "LaravelSchedule_WilsonAdmin" ^
+#       /TR "docker compose -f C:\path\docker-compose.yml exec -T laravel.test php artisan schedule:run" ^
+#       /RU SYSTEM /F
+# 驗證：vendor/bin/sail artisan schedule:list
 ```
