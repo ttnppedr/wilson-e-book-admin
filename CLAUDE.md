@@ -30,6 +30,17 @@ Wilson 電子書管理後台，基於 Laravel 13 + Filament v5 建構，整合 `
 - `config/licensing-filament-manager.php` 的 `licensed_entities` 尚未設定
 - LicenseTemplate：vendor 2.0 重新引入 Template 功能，但本專案刻意不使用。`license_templates` 表已刪除，`config/licensing.php` 中 `templates.enabled` 設為 `false`。`CustomLicensingPlugin` 已覆寫 `getWidgets()` 以避免 vendor widget 參照 Template。若需啟用 Template，須先還原 migration 並更新 config
 
+## Audit 守則（License / LicenseScope / LicenseUsage）
+
+`License`、`LicenseScope`、`LicenseUsage` 三個 model 透過 `owen-it/laravel-auditing` 記錄變更（commit 82dc98b）。Audit 掛在 Eloquent 的 `created`/`updated`/`deleted` 事件上，**任何不走 model 的操作都會繞過 audit 不留痕跡**。在這三個 Resource 上：
+
+- ❌ 不可使用 Filament `BulkAction`（內部 `Builder::delete()`/`update()`，繞事件）。需要批次操作時，請寫成自訂 `Action`，內部 `foreach` 逐筆呼叫 `$record->save()` 或 `$record->delete()`
+- ❌ 不可使用 Filament `reorderable()`（拖曳排序用 mass update 寫排序欄位，繞事件）
+- ❌ 不可使用 `saveQuietly()`、`updateQuietly()`、`Model::withoutEvents()`
+- ✅ 守門員測試：`tests/Feature/Filament/AuditTargetResourceGuardrailTest.php` 會驗證上述三個 Resource 沒有 `toolbarActions` 也沒有 reorder 欄位；`tests/Feature/Filament/FilamentAuditTrailTest.php` 驗證 Filament 的 create/edit/delete 都會寫 audit 並帶 actor
+
+新增「audit 對象」model 時，記得同步更新 guard rail 測試的 DataProvider。
+
 <laravel-boost-guidelines>
 === foundation rules ===
 
