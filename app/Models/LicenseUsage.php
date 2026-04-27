@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\EnforcesAuditEvents;
 use LucaLongo\Licensing\Models\LicenseUsage as BaseLicenseUsage;
 use OwenIt\Auditing\Contracts\Auditable;
 
 class LicenseUsage extends BaseLicenseUsage implements Auditable
 {
+    use EnforcesAuditEvents;
     use \OwenIt\Auditing\Auditable;
 
     protected $fillable = [

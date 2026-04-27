@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\EnforcesAuditEvents;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
@@ -10,6 +11,7 @@ use OwenIt\Auditing\Contracts\Auditable;
 
 class LicenseScope extends BaseLicenseScope implements Auditable
 {
+    use EnforcesAuditEvents;
     use \OwenIt\Auditing\Auditable;
 
     protected $fillable = [
