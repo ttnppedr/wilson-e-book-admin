@@ -32,14 +32,29 @@ Wilson 電子書管理後台，基於 Laravel 13 + Filament v5 建構，整合 `
 
 ## Audit 守則（License / LicenseScope / LicenseUsage）
 
-`License`、`LicenseScope`、`LicenseUsage` 三個 model 透過 `owen-it/laravel-auditing` 記錄變更（commit 82dc98b）。Audit 掛在 Eloquent 的 `created`/`updated`/`deleted` 事件上，**任何不走 model 的操作都會繞過 audit 不留痕跡**。在這三個 Resource 上：
+`License`、`LicenseScope`、`LicenseUsage` 三個 model 透過 `owen-it/laravel-auditing` 記錄變更（commit 82dc98b）。Audit 掛在 Eloquent 的 `created`/`updated`/`deleted` 事件上，**任何不走 model 的操作都會繞過 audit 不留痕跡**。
 
-- ❌ 不可使用 Filament `BulkAction`（內部 `Builder::delete()`/`update()`，繞事件）。需要批次操作時，請寫成自訂 `Action`，內部 `foreach` 逐筆呼叫 `$record->save()` 或 `$record->delete()`
-- ❌ 不可使用 Filament `reorderable()`（拖曳排序用 mass update 寫排序欄位，繞事件）
-- ❌ 不可使用 `saveQuietly()`、`updateQuietly()`、`Model::withoutEvents()`
-- ✅ 守門員測試：`tests/Feature/Filament/AuditTargetResourceGuardrailTest.php` 會驗證上述三個 Resource 沒有 `toolbarActions` 也沒有 reorder 欄位；`tests/Feature/Filament/FilamentAuditTrailTest.php` 驗證 Filament 的 create/edit/delete 都會寫 audit 並帶 actor
+### 禁止事項
+- ❌ Filament `BulkAction` / `toolbarActions`（內部 `Builder::delete()`/`update()`，繞事件）。需要批次操作時，請寫成自訂 `Action`，內部 `foreach` 逐筆呼叫 `$record->save()` 或 `$record->delete()`
+- ❌ Filament `reorderable()`（拖曳排序用 mass update 寫排序欄位，繞事件）
+- ❌ `saveQuietly()`、`updateQuietly()`、`deleteQuietly()`、`Model::withoutEvents()`
+- ❌ `Model::where(...)->update()` / `Model::query()->update/delete()` 等 mass update/delete
+- ❌ 對 `licenses` / `license_scopes` / `license_usages` 表使用 `DB::table()`
 
-新增「audit 對象」model 時，記得同步更新 guard rail 測試的 DataProvider。
+### 多層保護機制
+1. **Filament 結構守門員** — `tests/Feature/Filament/AuditTargetResourceGuardrailTest.php` 透過 reflection 自動掃描所有 audit target Resource 與 RelationManager，斷言沒有 `toolbarActions` 也沒有 reorder 欄位
+2. **Filament audit 整合測試** — `tests/Feature/Filament/FilamentAuditTrailTest.php` 驗證 Filament 的 create/edit/delete 都會寫 audit 並帶 actor
+3. **Runtime 保護** — `App\Models\Concerns\EnforcesAuditEvents` trait 覆寫 `saveQuietly`/`updateQuietly`/`deleteQuietly` 為拋出 `LogicException`，攔截動態派發呼叫
+4. **AST 靜態分析** — `tests/Feature/Audit/AuditTargetStaticAnalysisTest.php` 用 `nikic/php-parser` 掃 `app/` 偵測 quiet API 呼叫與 mass update/delete，能解析 use alias
+5. **CI 守則** — `bin/audit-bypass-scan.sh`（`composer audit-scan`）grep 偵測，可整合到 CI 或 git hook
+
+### 加新 audit 對象 model 的步驟
+1. Model 上 `implements OwenIt\Auditing\Contracts\Auditable` + `use \OwenIt\Auditing\Auditable;`
+2. 加 `use App\Models\Concerns\EnforcesAuditEvents;`（runtime 保護）
+3. 將表名加入 `bin/audit-bypass-scan.sh` 的 `TARGET_TABLES`
+4. 將 model FQN 加入 `tests/Feature/Audit/AuditTargetStaticAnalysisTest::AUDIT_TARGET_MODELS`
+5. 在 `AuditTargetResourceGuardrailTest::test_discovery_finds_all_known_audit_target_models` 加入新 model 到 `$expected`
+6. 跑 `composer audit-scan` + audit 相關測試確認全綠
 
 <laravel-boost-guidelines>
 === foundation rules ===

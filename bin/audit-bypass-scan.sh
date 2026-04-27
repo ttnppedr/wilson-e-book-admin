@@ -18,18 +18,38 @@ set -euo pipefail
 readonly TARGET_TABLES=(licenses license_scopes license_usages)
 readonly QUIET_METHODS_REGEX='->(saveQuietly|updateQuietly|deleteQuietly)\(|::withoutEvents\(|->withoutEvents\('
 
-declare -i failures=0
+# 允許在說明文件或定義拒絕語意的檔案內出現相關字樣（comment / 自我引用）。
+readonly -a ALLOWED_FILES=(
+    'app/Models/Concerns/EnforcesAuditEvents.php'
+)
 
-scan_dir() {
-    local dir="$1"
-    [[ -d "$dir" ]] || return 0
-    echo "$dir"
-}
+declare -i failures=0
 
 readonly -a SCAN_DIRS=(app routes database/seeders)
 
 grep_pattern() {
-    grep -rEn -e "$1" "${SCAN_DIRS[@]}" --include='*.php' 2>/dev/null || return 1
+    local pattern="$1"
+    local raw
+    raw=$(grep -rEn -e "$pattern" "${SCAN_DIRS[@]}" --include='*.php' 2>/dev/null || true)
+    [[ -z "$raw" ]] && return 1
+
+    local filtered=""
+    while IFS= read -r line; do
+        local skip=0
+        for allowed in "${ALLOWED_FILES[@]}"; do
+            if [[ "$line" == "$allowed:"* ]]; then
+                skip=1
+                break
+            fi
+        done
+        [[ $skip -eq 0 ]] && filtered+="${line}"$'\n'
+    done <<< "$raw"
+
+    filtered="${filtered%$'\n'}"
+    [[ -z "$filtered" ]] && return 1
+
+    printf '%s\n' "$filtered"
+    return 0
 }
 
 echo "→ 掃描 Eloquent quiet/withoutEvents API ..."
