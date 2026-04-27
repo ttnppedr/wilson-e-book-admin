@@ -53,6 +53,9 @@
             "@php artisan config:clear --ansi",
             "@php artisan test"
         ],
+        "audit-scan": [
+            "@php -r \"passthru('bin/audit-bypass-scan.sh', $exit); exit($exit);\""
+        ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi",
