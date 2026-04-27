@@ -3,21 +3,22 @@
 namespace Tests\Feature\Filament;
 
 use App\Filament\Resources\LicenseResource\Pages\EditLicense;
-use App\Filament\Resources\LicenseResource\Pages\ListLicenses;
 use App\Filament\Resources\LicenseResource\RelationManagers\UsagesRelationManager;
 use App\Filament\Resources\LicenseScopeResource\Pages\EditLicenseScope;
-use App\Filament\Resources\LicenseScopeResource\Pages\ListLicenseScopes;
 use App\Filament\Resources\LicenseScopeResource\RelationManagers\LicensesRelationManager;
-use App\Filament\Resources\LicenseUsageResource\Pages\ListLicenseUsages;
 use App\Models\ContentEncryptionKey;
 use App\Models\License;
 use App\Models\LicenseScope;
+use App\Models\LicenseUsage;
 use App\Models\User;
+use Filament\Resources\Resource;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use LucaLongo\Licensing\Enums\LicenseStatus;
+use OwenIt\Auditing\Contracts\Auditable;
 use PHPUnit\Framework\Attributes\DataProvider;
+use ReflectionClass;
 use Tests\TestCase;
 
 /**
@@ -43,13 +44,61 @@ class AuditTargetResourceGuardrailTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{class-string<\Filament\Resources\Pages\ListRecords>, string}>
+     * 候選 Resource 清單（不需 Laravel boot 即可列舉）。
+     * 是否為 audit target 由 test 內判斷（呼叫 getModel() 需要 config()）。
+     *
+     * @return iterable<string, array{class-string<Resource>}>
      */
-    public static function auditTargetListPages(): iterable
+    public static function candidateResources(): iterable
     {
-        yield 'License' => [ListLicenses::class, 'License'];
-        yield 'LicenseScope' => [ListLicenseScopes::class, 'LicenseScope'];
-        yield 'LicenseUsage' => [ListLicenseUsages::class, 'LicenseUsage'];
+        $directory = dirname(__DIR__, 3).'/app/Filament/Resources';
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS),
+        );
+
+        foreach ($iterator as $file) {
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
+
+            $relative = substr($file->getPathname(), strlen($directory) + 1, -4);
+            $className = 'App\\Filament\\Resources\\'.str_replace(DIRECTORY_SEPARATOR, '\\', $relative);
+
+            if (! class_exists($className)) {
+                continue;
+            }
+
+            $reflection = new ReflectionClass($className);
+
+            if ($reflection->isAbstract() || ! $reflection->isSubclassOf(Resource::class)) {
+                continue;
+            }
+
+            yield class_basename($className) => [$className];
+        }
+    }
+
+    /**
+     * 在 test 執行階段（Laravel 已 boot）解析每個候選 Resource 是否為 audit target。
+     *
+     * @return list<class-string<Resource>>
+     */
+    private static function discoverAuditTargetResources(): array
+    {
+        $resources = [];
+
+        foreach (self::candidateResources() as [$resourceClass]) {
+            $modelClass = $resourceClass::getModel();
+
+            if (! is_subclass_of($modelClass, Auditable::class)) {
+                continue;
+            }
+
+            $resources[] = $resourceClass;
+        }
+
+        return $resources;
     }
 
     /**
@@ -72,9 +121,39 @@ class AuditTargetResourceGuardrailTest extends TestCase
         ];
     }
 
-    #[DataProvider('auditTargetListPages')]
-    public function test_audit_target_resource_has_no_toolbar_actions(string $listPage, string $modelLabel): void
+    public function test_discovery_finds_all_known_audit_target_models(): void
     {
+        $models = array_map(
+            fn (string $resource): string => $resource::getModel(),
+            self::discoverAuditTargetResources(),
+        );
+
+        $expected = [License::class, LicenseScope::class, LicenseUsage::class];
+
+        foreach ($expected as $model) {
+            $this->assertContains(
+                $model,
+                $models,
+                "Auto-discovery 未找到 {$model}。可能原因："
+                .'(1) Resource 沒覆寫 getModel() 指向正確 model，或 '
+                .'(2) Model 不再 implement OwenIt\\Auditing\\Contracts\\Auditable — '
+                .'若是後者，請確認是刻意移除 audit；移除前請與團隊評估合規影響。',
+            );
+        }
+    }
+
+    #[DataProvider('candidateResources')]
+    public function test_audit_target_resource_has_no_toolbar_actions(string $resourceClass): void
+    {
+        $modelClass = $resourceClass::getModel();
+
+        if (! is_subclass_of($modelClass, Auditable::class)) {
+            $this->markTestSkipped("{$resourceClass} 的 model 不是 Auditable，跳過守門檢查。");
+        }
+
+        $listPage = $resourceClass::getPages()['index']->getPage();
+        $modelLabel = class_basename($modelClass);
+
         $table = Livewire::test($listPage)->instance()->getTable();
 
         $this->assertSame(
@@ -86,9 +165,18 @@ class AuditTargetResourceGuardrailTest extends TestCase
         );
     }
 
-    #[DataProvider('auditTargetListPages')]
-    public function test_audit_target_resource_is_not_reorderable(string $listPage, string $modelLabel): void
+    #[DataProvider('candidateResources')]
+    public function test_audit_target_resource_is_not_reorderable(string $resourceClass): void
     {
+        $modelClass = $resourceClass::getModel();
+
+        if (! is_subclass_of($modelClass, Auditable::class)) {
+            $this->markTestSkipped("{$resourceClass} 的 model 不是 Auditable，跳過守門檢查。");
+        }
+
+        $listPage = $resourceClass::getPages()['index']->getPage();
+        $modelLabel = class_basename($modelClass);
+
         $table = Livewire::test($listPage)->instance()->getTable();
 
         $this->assertNull(
