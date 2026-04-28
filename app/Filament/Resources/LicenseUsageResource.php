@@ -23,6 +23,8 @@ use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseUsageRes
  */
 class LicenseUsageResource extends BaseLicenseUsageResource
 {
+    protected static bool $isGloballySearchable = false;
+
     public static function getNavigationBadge(): ?string
     {
         return null;

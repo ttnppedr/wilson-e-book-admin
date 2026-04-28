@@ -22,6 +22,8 @@ use LucaLongo\Licensing\Models\LicenseScope;
  */
 class LicenseScopeResource extends BaseLicenseScopeResource
 {
+    protected static bool $isGloballySearchable = false;
+
     public static function getNavigationBadge(): ?string
     {
         return null;

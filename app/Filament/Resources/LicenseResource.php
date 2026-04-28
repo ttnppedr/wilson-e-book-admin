@@ -29,6 +29,8 @@ use LucaLongo\Licensing\Models\LicenseScope;
  */
 class LicenseResource extends BaseLicenseResource
 {
+    protected static ?string $recordTitleAttribute = 'name';
+
     public static function getNavigationBadge(): ?string
     {
         return null;
