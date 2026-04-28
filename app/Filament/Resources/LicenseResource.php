@@ -157,10 +157,16 @@ class LicenseResource extends BaseLicenseResource
                     ->sortable()
                     ->placeholder(__('laravel-licensing-filament-manager::common.not_activated')),
 
+                Tables\Columns\IconColumn::make('is_perpetual')
+                    ->label('永久授權')
+                    ->boolean()
+                    ->getStateUsing(fn (License $record): bool => $record->expires_at === null),
+
                 Tables\Columns\TextColumn::make('expires_at')
                     ->label(__('laravel-licensing-filament-manager::license.fields.expires_at'))
                     ->dateTime('Y-m-d H:i:s')
                     ->sortable()
+                    ->placeholder('—')
                     ->color(fn ($state) => $state && $state->isPast() ? 'danger' : 'success'),
             ])
             ->filters([

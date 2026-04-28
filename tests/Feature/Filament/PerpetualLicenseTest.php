@@ -4,6 +4,7 @@ namespace Tests\Feature\Filament;
 
 use App\Filament\Resources\LicenseResource\Pages\CreateLicense;
 use App\Filament\Resources\LicenseResource\Pages\EditLicense;
+use App\Filament\Resources\LicenseResource\Pages\ListLicenses;
 use App\Models\License;
 use App\Models\LicenseScope;
 use App\Models\User;
@@ -176,6 +177,35 @@ class PerpetualLicenseTest extends TestCase
         $this->assertSame((string) $this->admin->getKey(), (string) $audit->user_id);
         $this->assertNotNull($audit->old_values['expires_at']);
         $this->assertNull($audit->new_values['expires_at']);
+    }
+
+    public function test_table_is_perpetual_column_checked_when_expires_at_is_null(): void
+    {
+        $perpetual = License::create([
+            'key_hash' => hash('sha256', fake()->uuid()),
+            'status' => LicenseStatus::Pending,
+            'license_scope_id' => $this->scope->getKey(),
+            'name' => '永久授權',
+            'expires_at' => null,
+            'max_usages' => 3,
+            'meta' => [],
+        ]);
+
+        $dated = License::create([
+            'key_hash' => hash('sha256', fake()->uuid()),
+            'status' => LicenseStatus::Pending,
+            'license_scope_id' => $this->scope->getKey(),
+            'name' => '一年期授權',
+            'expires_at' => now()->addDays(365),
+            'max_usages' => 3,
+            'meta' => [],
+        ]);
+
+        Livewire::test(ListLicenses::class)
+            ->assertTableColumnExists('is_perpetual')
+            ->assertCanSeeTableRecords([$perpetual, $dated])
+            ->assertTableColumnStateSet('is_perpetual', true, $perpetual)
+            ->assertTableColumnStateSet('is_perpetual', false, $dated);
     }
 
     public function test_creating_perpetual_license_writes_audit_with_null_expires_at(): void
