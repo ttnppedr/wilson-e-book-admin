@@ -54,6 +54,64 @@ class PerpetualLicenseTest extends TestCase
         $this->assertFalse($license->isExpired());
     }
 
+    public function test_creating_with_perpetual_scope_auto_checks_toggle(): void
+    {
+        $perpetualScope = LicenseScope::create([
+            'name' => '永久範圍',
+            'is_active' => true,
+            'default_max_usages' => 1,
+            'default_duration_days' => null,
+        ]);
+
+        Livewire::test(CreateLicense::class)
+            ->fillForm(['license_scope_id' => $perpetualScope->getKey()])
+            ->assertFormSet([
+                'is_perpetual' => true,
+                'expires_at' => null,
+            ])
+            ->assertFormFieldIsDisabled('expires_at');
+    }
+
+    public function test_creating_with_dated_scope_auto_fills_expires_at(): void
+    {
+        Livewire::test(CreateLicense::class)
+            ->fillForm(['license_scope_id' => $this->scope->getKey()])
+            ->assertFormSet([
+                'is_perpetual' => false,
+            ])
+            ->assertFormSet(fn (array $state) => ! empty($state['expires_at']))
+            ->assertFormFieldIsEnabled('expires_at');
+    }
+
+    public function test_editing_does_not_overwrite_perpetual_state_when_scope_changes(): void
+    {
+        $perpetualScope = LicenseScope::create([
+            'name' => '永久範圍',
+            'is_active' => true,
+            'default_max_usages' => 1,
+            'default_duration_days' => null,
+        ]);
+
+        $originalExpiry = now()->addDays(365)->startOfSecond();
+
+        $license = License::create([
+            'key_hash' => hash('sha256', fake()->uuid()),
+            'status' => LicenseStatus::Pending,
+            'license_scope_id' => $this->scope->getKey(),
+            'name' => '一年期',
+            'expires_at' => $originalExpiry,
+            'max_usages' => 3,
+            'meta' => [],
+        ]);
+
+        Livewire::test(EditLicense::class, ['record' => $license->getRouteKey()])
+            ->fillForm(['license_scope_id' => $perpetualScope->getKey()])
+            ->assertFormSet([
+                'is_perpetual' => false,
+            ])
+            ->assertFormSet(fn (array $state) => $state['expires_at'] !== null);
+    }
+
     public function test_perpetual_toggle_clears_expires_at_when_checked(): void
     {
         Livewire::test(CreateLicense::class)

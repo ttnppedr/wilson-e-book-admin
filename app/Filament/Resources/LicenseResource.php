@@ -52,6 +52,7 @@ class LicenseResource extends BaseLicenseResource
                             ->required()
                             ->live()
                             ->disabled(fn (?License $record) => $isActivated($record))
+                            ->selectablePlaceholder(fn (?License $record) => ! $isActivated($record))
                             ->default(function ($livewire) {
                                 if (method_exists($livewire, 'getOwnerRecord')) {
                                     return $livewire->getOwnerRecord()->id;
@@ -60,15 +61,21 @@ class LicenseResource extends BaseLicenseResource
                                 return null;
                             })
                             ->hidden(fn ($livewire) => method_exists($livewire, 'getOwnerRecord'))
-                            ->afterStateUpdated(function ($state, callable $set, callable $get): void {
-                                if (! $state || $get('is_perpetual')) {
+                            ->afterStateUpdated(function ($state, callable $set, string $operation): void {
+                                if ($operation !== 'create' || ! $state) {
                                     return;
                                 }
                                 $scope = LicenseScope::find($state);
-                                if (! $scope || ! $scope->default_duration_days) {
+                                if (! $scope) {
                                     return;
                                 }
-                                $set('expires_at', now()->addDays($scope->default_duration_days)->format('Y-m-d H:i:s'));
+                                if ($scope->default_duration_days) {
+                                    $set('is_perpetual', false);
+                                    $set('expires_at', now()->addDays($scope->default_duration_days)->format('Y-m-d H:i:s'));
+                                } else {
+                                    $set('is_perpetual', true);
+                                    $set('expires_at', null);
+                                }
                             }),
 
                         Forms\Components\TextInput::make('name')

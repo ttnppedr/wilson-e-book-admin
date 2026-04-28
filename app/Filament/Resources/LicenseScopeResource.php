@@ -55,6 +55,7 @@ class LicenseScopeResource extends BaseLicenseScopeResource
                             ->preload()
                             ->required()
                             ->disabled(fn (?LicenseScope $record): bool => $record !== null)
+                            ->selectablePlaceholder(fn (?LicenseScope $record): bool => $record === null)
                             ->dehydrated()
                             ->helperText(fn (?LicenseScope $record): string => $record !== null
                                 ? '建立後不可變更'
@@ -89,6 +90,11 @@ class LicenseScopeResource extends BaseLicenseScopeResource
                     ->label(__('laravel-licensing-filament-manager::license-scope.fields.name'))
                     ->sortable()
                     ->weight('bold'),
+
+                Tables\Columns\TextColumn::make('default_duration_days')
+                    ->label(__('laravel-licensing-filament-manager::license-scope.fields.default_duration_days'))
+                    ->formatStateUsing(fn (?int $state): string => $state ? "{$state} 天" : '永久')
+                    ->sortable(),
 
                 Tables\Columns\TextColumn::make('licenses_count')
                     ->label(__('laravel-licensing-filament-manager::license-scope.fields.licenses_count'))
