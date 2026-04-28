@@ -60,8 +60,8 @@ class LicenseResource extends BaseLicenseResource
                                 return null;
                             })
                             ->hidden(fn ($livewire) => method_exists($livewire, 'getOwnerRecord'))
-                            ->afterStateUpdated(function ($state, callable $set): void {
-                                if (! $state) {
+                            ->afterStateUpdated(function ($state, callable $set, callable $get): void {
+                                if (! $state || $get('is_perpetual')) {
                                     return;
                                 }
                                 $scope = LicenseScope::find($state);
@@ -101,12 +101,27 @@ class LicenseResource extends BaseLicenseResource
                                     ->disabled()
                                     ->hiddenOn('create'),
 
+                                Forms\Components\Toggle::make('is_perpetual')
+                                    ->label('永久授權')
+                                    ->dehydrated(false)
+                                    ->live()
+                                    ->default(false)
+                                    ->disabled(fn (?License $record) => $isActivated($record))
+                                    ->afterStateHydrated(function (Forms\Components\Toggle $component, ?License $record): void {
+                                        $component->state($record !== null && $record->expires_at === null);
+                                    })
+                                    ->afterStateUpdated(function ($state, callable $set): void {
+                                        if ($state) {
+                                            $set('expires_at', null);
+                                        }
+                                    }),
+
                                 Forms\Components\DateTimePicker::make('expires_at')
                                     ->label(__('laravel-licensing-filament-manager::license.fields.expires_at'))
                                     ->displayFormat('d/m/Y H:i')
-                                    ->required()
-                                    ->disabled(fn (?License $record) => $isActivated($record))
-                                    ->helperText('選擇授權範圍後自動帶入，可手動調整。不論何時啟用，到期時間固定不變。'),
+                                    ->disabled(fn (callable $get, ?License $record) => $isActivated($record) || $get('is_perpetual'))
+                                    ->dehydrated()
+                                    ->helperText('選擇授權範圍後自動帶入，可手動調整。勾選「永久授權」即留空，不論何時啟用永不到期。不論何時啟用，到期時間固定不變。'),
                             ])
                             ->columns(),
 
@@ -163,8 +178,10 @@ class LicenseResource extends BaseLicenseResource
                 Tables\Filters\TernaryFilter::make('expired')
                     ->label(__('laravel-licensing-filament-manager::license.filters.expired'))
                     ->queries(
-                        true: fn (Builder $query) => $query->where('expires_at', '<', now()),
-                        false: fn (Builder $query) => $query->where('expires_at', '>=', now()),
+                        true: fn (Builder $query) => $query->whereNotNull('expires_at')->where('expires_at', '<', now()),
+                        false: fn (Builder $query) => $query->where(
+                            fn (Builder $q) => $q->whereNull('expires_at')->orWhere('expires_at', '>=', now())
+                        ),
                     ),
 
                 Tables\Filters\Filter::make('expiring_soon')
