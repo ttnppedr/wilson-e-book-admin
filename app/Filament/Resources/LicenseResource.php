@@ -95,12 +95,6 @@ class LicenseResource extends BaseLicenseResource
                     ->schema([
                         Section::make(__('laravel-licensing-filament-manager::license.form.dates_activation'))
                             ->schema([
-                                Forms\Components\DateTimePicker::make('activated_at')
-                                    ->label(__('laravel-licensing-filament-manager::license.fields.activated_at'))
-                                    ->displayFormat('d/m/Y H:i')
-                                    ->disabled()
-                                    ->hiddenOn('create'),
-
                                 Forms\Components\Toggle::make('is_perpetual')
                                     ->label('永久授權')
                                     ->dehydrated(false)
@@ -120,8 +114,14 @@ class LicenseResource extends BaseLicenseResource
                                     ->label(__('laravel-licensing-filament-manager::license.fields.expires_at'))
                                     ->displayFormat('d/m/Y H:i')
                                     ->disabled(fn (callable $get, ?License $record) => $isActivated($record) || $get('is_perpetual'))
-                                    ->dehydrated()
-                                    ->helperText('選擇授權範圍後自動帶入，可手動調整。勾選「永久授權」即留空，不論何時啟用永不到期。不論何時啟用，到期時間固定不變。'),
+                                    ->dehydrated(),
+
+                                Forms\Components\DateTimePicker::make('activated_at')
+                                    ->label(__('laravel-licensing-filament-manager::license.fields.activated_at'))
+                                    ->displayFormat('d/m/Y H:i')
+                                    ->disabled()
+                                    ->columnSpanFull()
+                                    ->hiddenOn('create'),
                             ])
                             ->columns(),
 
