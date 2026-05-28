@@ -31,9 +31,9 @@ class WordwallResource extends Resource
                 TextInput::make('resource_url')
                     ->label('Resource 網址')
                     ->required()
-                    ->rules(['regex:#^https://wordwall\.net/resource/\d+$#'])
+                    ->rules(['regex:#^https://wordwall\.net/#'])
                     ->validationMessages([
-                        'regex' => '網址必須是 https://wordwall.net/resource/ 加上數字 ID 的格式',
+                        'regex' => '網址必須以 https://wordwall.net/ 開頭',
                     ])
                     ->unique(ignoreRecord: true)
                     ->maxLength(255)

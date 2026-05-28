@@ -71,7 +71,7 @@ class ManageWordwallsTest extends TestCase
         ]);
     }
 
-    public function test_resource_url_must_be_required_match_wordwall_format_and_unique(): void
+    public function test_resource_url_must_be_required_start_with_wordwall_and_unique(): void
     {
         Wordwall::create(['resource_url' => 'https://wordwall.net/resource/999', 'sort' => 1]);
 
@@ -85,15 +85,15 @@ class ManageWordwallsTest extends TestCase
             ->callAction(CreateAction::class, data: ['resource_url' => 'https://example.com/resource/123'])
             ->assertHasActionErrors(['resource_url' => ['regex']]);
 
-        // regex:路徑尾端非數字
-        Livewire::test(ManageWordwalls::class)
-            ->callAction(CreateAction::class, data: ['resource_url' => 'https://wordwall.net/resource/abc'])
-            ->assertHasActionErrors(['resource_url' => ['regex']]);
-
         // regex:http 而非 https
         Livewire::test(ManageWordwalls::class)
             ->callAction(CreateAction::class, data: ['resource_url' => 'http://wordwall.net/resource/123'])
             ->assertHasActionErrors(['resource_url' => ['regex']]);
+
+        // 以 https://wordwall.net/ 開頭即通過格式檢查（不再限制路徑尾端為數字）
+        Livewire::test(ManageWordwalls::class)
+            ->callAction(CreateAction::class, data: ['resource_url' => 'https://wordwall.net/resource/abc'])
+            ->assertHasNoActionErrors();
 
         // unique
         Livewire::test(ManageWordwalls::class)
