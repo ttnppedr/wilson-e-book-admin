@@ -9,18 +9,37 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 專案概述
 
-Wilson 電子書管理後台，基於 Laravel 13 + Filament v5 建構，整合 `masterix21/laravel-licensing` 2.0 授權管理系統。主要功能為管理電子書產品的軟體授權（License Scope → License → License Usage）。
+Wilson 電子書管理後台，基於 Laravel 13 + Filament v5 建構，整合 `masterix21/laravel-licensing` 2.x 授權管理系統。主要功能為管理電子書產品的軟體授權（License Scope → License → License Usage）。
 
 ## 架構
 
 - **管理面板**: Filament v5，路徑 `/admin`，設定在 `app/Providers/Filament/AdminPanelProvider.php`
-- **授權系統**: `masterix21/laravel-licensing` 2.0 + `laravel-licensing-filament-manager`，兩層架構：LicenseScope（產品/版本）→ License（個別授權）→ LicenseUsage（席位）。Vendor 2.0 重新引入 LicenseTemplate，但本專案刻意不使用（`license_templates` 表已刪除、`config('licensing.templates.enabled')` 設為 `false`）
+- **授權系統**: `masterix21/laravel-licensing` 2.x + `laravel-licensing-filament-manager`，兩層架構：LicenseScope（產品/版本）→ License（個別授權）→ LicenseUsage（席位）。Vendor 2.0 重新引入 LicenseTemplate，但本專案刻意不使用（`license_templates` 表已刪除、`config('licensing.templates.enabled')` 設為 `false`）
 - **Content Encryption Key**: 掛在 LicenseScope 上（`content_encryption_key_id`），每個產品/版本對應一把加密金鑰，啟用 API 透過 `License → Scope → CEK` 取得
-- **授權 enum 翻譯**: 在 `app/Providers/AppServiceProvider.php` 透過 `TextColumn::configureUsing` 和 `Select::configureUsing` 全域翻譯
+- **授權 enum 翻譯**: vendor 的 `LicenseStatus` 透過 `app/Enums/LicenseStatusLabel.php`（實作 `HasLabel`/`HasColor`）翻譯顯示，在 `LicenseResource` 以 `formatStateUsing`/`SelectFilter` 套用（commit 06c611a 已移除舊的全域 `configureUsing` hack）
 - **翻譯檔**: 套件有兩個翻譯 namespace（`laravel-licensing-filament-manager` 和 `licensing-filament-manager`），zh_TW 翻譯分別在 `lang/vendor/` 下對應的兩個目錄
 - **時區**: 顯示用 `Asia/Taipei`（GMT+8），資料庫儲存為 UTC
 - **Docker**: Sail 使用自訂 Dockerfile（`docker/8.5/Dockerfile`），已加入 `php8.5-gmp` 擴充套件
 - **Pint**: 編輯 PHP 檔案後由 PostToolUse hook 自動逐檔格式化；手動整批格式化用 `vendor/bin/sail bin pint --dirty`
+- **排程與 CLI**: `licensing:check-expirations` 每日把過期 License 由 active→grace→expired（`routes/console.php`，受 `config/licensing.php` 的 `scheduler.check_expirations` 控制，`onOneServer`+`withoutOverlapping`）。另有 `content-key:create`/`content-key:list`、`licensing:passphrase-generate` 等 CLI。Wordwall（model + Filament resource + `v1/wordwalls` API）非 audit 對象
+
+## API 層
+
+對外授權/內容 API。vendor `licensing.api.enabled = false`，**所有路由手動註冊在 `routes/api.php`**：
+
+- `POST api/licensing/v1/activate` — `Api\LicenseController::activate`，ECDH(X25519) content key wrapping + 簽發 PASETO token。Throttle `licensing-activate`
+- `POST api/licensing/v1/validate` — `Api\ValidateController`，heartbeat 合併，需回帶 activate 簽發的 PASETO token（`VerifyBearerToken`）。Throttle `licensing-validate`
+- `GET api/v1/wordwalls` — `Api\WordwallController`，需 bearer token + ETag 條件式請求（`SetResponseEtag`）。Throttle `api-wordwall`
+
+**Vendor 覆寫（升級 gotcha）**: `Api\LicenseController extends` vendor `BaseLicenseController`、`ValidateController extends LicenseController`。`activate()` 等方法**複製自 vendor 並就地插入自訂邏輯**，方法註解標註「對齊版本：vendor 2.1.1」。**升級 `masterix21/laravel-licensing` 時務必重新對齊 parent 的最新實作。**
+
+**金鑰流**: content key 經 `License → Scope → ContentEncryptionKey`（`ContentKeyWrapper`）取得並 wrap；PASETO 由 `WilsonPasetoTokenService` 簽發/驗證。
+
+**統一錯誤格式**: 一律 `{success, error: {code, message}}`。5xx 全部遮蔽成 generic `SERVER_ERROR`，完整 exception 記到 `api` log channel（`storage/logs/api-YYYY-MM-DD.log`），**絕不**回傳 stack trace。兩層防線：controller 的 `serverError()` helper + `bootstrap/app.php` 全域 render callback（含 `RATE_LIMITED` 429 + `Retry-After`）。
+
+**Rate limiter**: 定義在 `AppServiceProvider::boot()`。`licensing-activate`/`licensing-validate` 用 `sha1(IP|fingerprint)` 複合鍵、limit 取自 `config/licensing.php` 的 `rate_limit.*`；`api-wordwall` 用 IP。
+
+**Middleware**: `LogApiCall`（prepend 到所有 api 請求）、`VerifyBearerToken`（PASETO 驗證）、`SetResponseEtag`（ETag）。
 
 ## 套件整合注意事項
 
@@ -68,20 +87,18 @@ The Laravel Boost guidelines are specifically curated by Laravel maintainers for
 This application is a Laravel application and its main Laravel ecosystems package & versions are below. You are an expert with them all. Ensure you abide by these specific packages & versions.
 
 - php - 8.5
-- laravel/framework (LARAVEL) - v12
+- filament/filament (FILAMENT) - v5
+- laravel/framework (LARAVEL) - v13
+- laravel/nightwatch (NIGHTWATCH) - v1
 - laravel/prompts (PROMPTS) - v0
+- livewire/livewire (LIVEWIRE) - v4
 - laravel/boost (BOOST) - v2
 - laravel/mcp (MCP) - v0
 - laravel/pail (PAIL) - v1
 - laravel/pint (PINT) - v1
 - laravel/sail (SAIL) - v1
-- phpunit/phpunit (PHPUNIT) - v11
-
-## Skills Activation
-
-This project has domain-specific skills available. You MUST activate the relevant skill whenever you work in that domain—don't wait until you're stuck.
-
-- `laravel-best-practices` — Apply this skill whenever writing, reviewing, or refactoring Laravel PHP code. This includes creating or modifying controllers, models, migrations, form requests, policies, jobs, scheduled commands, service classes, and Eloquent queries. Triggers for N+1 and query performance issues, caching strategies, authorization and security patterns, validation, error handling, queue and job configuration, route definitions, and architectural decisions. Also use for Laravel code reviews and refactoring existing Laravel code to follow best practices. Covers any task involving Laravel backend PHP code patterns.
+- phpunit/phpunit (PHPUNIT) - v12
+- tailwindcss (TAILWINDCSS) - v4
 
 ## Conventions
 
@@ -141,7 +158,6 @@ This project has domain-specific skills available. You MUST activate the relevan
 - Run Artisan commands directly via the command line (e.g., `vendor/bin/sail artisan route:list`). Use `vendor/bin/sail artisan list` to discover available commands and `vendor/bin/sail artisan [command] --help` to check parameters.
 - Inspect routes with `vendor/bin/sail artisan route:list`. Filter with: `--method=GET`, `--name=users`, `--path=api`, `--except-vendor`, `--only-vendor`.
 - Read configuration values using dot notation: `vendor/bin/sail artisan config:show app.name`, `vendor/bin/sail artisan config:show database.default`. Or read config files directly from the `config/` directory.
-- To check environment variables, read the `.env` file directly.
 
 ## Tinker
 
@@ -160,6 +176,12 @@ This project has domain-specific skills available. You MUST activate the relevan
 - Prefer PHPDoc blocks over inline comments. Only add inline comments for exceptionally complex logic.
 - Use array shape type definitions in PHPDoc blocks.
 
+=== deployments rules ===
+
+# Deployment
+
+- Laravel can be deployed using [Laravel Cloud](https://cloud.laravel.com/), which is the fastest way to deploy and scale production Laravel applications.
+
 === sail rules ===
 
 # Laravel Sail
@@ -173,6 +195,13 @@ This project has domain-specific skills available. You MUST activate the relevan
     - Execute Node commands: `vendor/bin/sail npm run dev`
     - Execute PHP scripts: `vendor/bin/sail php [script]`
 - View all available Sail commands by running `vendor/bin/sail` without arguments.
+
+=== tests rules ===
+
+# Test Enforcement
+
+- Every change must be programmatically tested. Write a new test or update an existing test, then run the affected tests to make sure they pass.
+- Run the minimum number of tests needed to ensure code quality and speed. Use `vendor/bin/sail artisan test --compact` with a specific filename or filter.
 
 === laravel/core rules ===
 
@@ -203,31 +232,6 @@ This project has domain-specific skills available. You MUST activate the relevan
 ## Vite Error
 
 - If you receive an "Illuminate\Foundation\ViteException: Unable to locate file in Vite manifest" error, you can run `vendor/bin/sail npm run build` or ask the user to run `vendor/bin/sail npm run dev` or `vendor/bin/sail composer run dev`.
-
-=== laravel/v12 rules ===
-
-# Laravel 12
-
-- CRITICAL: ALWAYS use `search-docs` tool for version-specific Laravel documentation and updated code examples.
-- Since Laravel 11, Laravel has a new streamlined file structure which this project uses.
-
-## Laravel 12 Structure
-
-- In Laravel 12, middleware are no longer registered in `app/Http/Kernel.php`.
-- Middleware are configured declaratively in `bootstrap/app.php` using `Application::configure()->withMiddleware()`.
-- `bootstrap/app.php` is the file to register middleware, exceptions, and routing files.
-- `bootstrap/providers.php` contains application specific service providers.
-- The `app/Console/Kernel.php` file no longer exists; use `bootstrap/app.php` or `routes/console.php` for console configuration.
-- Console commands in `app/Console/Commands/` are automatically available and do not require manual registration.
-
-## Database
-
-- When modifying a column, the migration must include all of the attributes that were previously defined on the column. Otherwise, they will be dropped and lost.
-- Laravel 12 allows limiting eagerly loaded records natively, without external packages: `$query->latest()->limit(10);`.
-
-### Models
-
-- Casts can and likely should be set in a `casts()` method on a model rather than the `$casts` property. Follow existing conventions from other models.
 
 === pint/core rules ===
 

@@ -10,7 +10,7 @@ class ValidateController extends LicenseController
     /**
      * 覆寫 vendor validateLicense()，額外加入 heartbeat（更新 last_seen_at）
      * 與 metadata 合併邏輯，讓 App 端單一端點完成狀態驗證 + 心跳回報。
-     * 對齊版本：vendor 2.0 — client data 存放在 meta.client_data 下，
+     * 對齊版本：vendor 2.1.1 — client data 存放在 meta.client_data 下，
      * 避免覆寫內部 metadata。
      */
     public function validateLicense(Request $request): JsonResponse
