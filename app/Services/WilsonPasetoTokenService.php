@@ -23,8 +23,9 @@ use ParagonIE\Paseto\Protocol\Version4;
  *   邏輯並插入 extra claim 合併」的策略。
  *
  * ⚠️ 升級 masterix21/laravel-licensing 時務必重新對齊 parent::issue()。
- *    對齊版本：vendor 2.0.0
+ *    對齊版本：vendor 2.1.1
  *    唯一差異在下方 `$claims = ...` 後方的 extra_claims 合併區塊。
+ *    （signing key 建構已對齊 vendor 2.0.1 起的 seed-derived 寫法 buildSecretKey()。）
  *
  * 設定方式：在 `config/licensing.php` 的 `offline_token.service` 指向此類別。
  */
@@ -53,7 +54,7 @@ class WilsonPasetoTokenService extends PasetoTokenService
         if (! $privateKeyBase64) {
             throw new \RuntimeException('Private key not available');
         }
-        $privateKey = new AsymmetricSecretKey(base64_decode($privateKeyBase64), new Version4);
+        $privateKey = $this->buildSecretKey($privateKeyBase64);
 
         $ttlDays = $options['ttl_days'] ?? $license->getTokenTtlDays();
         $issuer = $options['issuer']
@@ -128,5 +129,31 @@ class WilsonPasetoTokenService extends PasetoTokenService
         ]);
 
         return $token->setFooter($footer)->toString();
+    }
+
+    /**
+     * 由儲存的私鑰材料建構 PASETO v4 signing key。
+     *
+     * 對齊 vendor 2.0.1 起的 `PasetoTokenService::buildSecretKey()`：取前 32 bytes
+     * 當 seed，交給 `AsymmetricSecretKey::v4()` 以 `sodium_crypto_sign_seed_keypair()`
+     * 重新推導 canonical Ed25519 keypair，使 paragonie/paseto v4 的 misuse-resistance
+     * 檢查不論金鑰原本如何儲存都能通過。重推得到的 keypair 與原 public key 一致，
+     * 已簽發的 token 與發佈的 public key bundle 皆維持相容。
+     */
+    private function buildSecretKey(string $base64): AsymmetricSecretKey
+    {
+        $raw = base64_decode($base64, true);
+
+        if ($raw === false || strlen($raw) < SODIUM_CRYPTO_SIGN_SEEDBYTES) {
+            throw new \RuntimeException('Invalid signing key material');
+        }
+
+        $seed = substr($raw, 0, SODIUM_CRYPTO_SIGN_SEEDBYTES);
+
+        try {
+            return AsymmetricSecretKey::v4($seed);
+        } finally {
+            sodium_memzero($seed);
+        }
     }
 }
