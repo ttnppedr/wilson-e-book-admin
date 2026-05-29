@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\LicenseController;
 use App\Http\Controllers\Api\ValidateController;
 use App\Http\Controllers\Api\WordwallController;
+use App\Http\Middleware\SetResponseEtag;
 use App\Http\Middleware\VerifyBearerToken;
 use Illuminate\Support\Facades\Route;
 
@@ -26,6 +27,10 @@ Route::prefix('licensing/v1')
 Route::prefix('v1')
     ->group(function (): void {
         Route::get('wordwalls', WordwallController::class)
-            ->middleware(['throttle:api-wordwall', VerifyBearerToken::class])
+            ->middleware([
+                'throttle:api-wordwall',
+                VerifyBearerToken::class,
+                SetResponseEtag::class,
+            ])
             ->name('v1.wordwalls');
     });

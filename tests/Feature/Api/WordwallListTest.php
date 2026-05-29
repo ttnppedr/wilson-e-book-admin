@@ -101,6 +101,59 @@ class WordwallListTest extends TestCase
         ]);
     }
 
+    public function test_includes_etag_header_on_success(): void
+    {
+        Wordwall::factory()->create();
+
+        $response = $this->getJsonWithToken(self::WORDWALL_URL);
+
+        $response->assertOk();
+        $this->assertNotNull(
+            $response->headers->get('ETag'),
+            '成功回應應帶 ETag header 供 client 做條件式請求'
+        );
+    }
+
+    public function test_returns_304_when_if_none_match_matches_current_list(): void
+    {
+        Wordwall::factory()->create(['resource_url' => 'https://wordwall.net/resource/111', 'sort' => 1]);
+
+        $first = $this->getJsonWithToken(self::WORDWALL_URL);
+        $first->assertOk();
+        $etag = $first->headers->get('ETag');
+        $this->assertNotNull($etag);
+
+        $second = $this->withHeaders([
+            'Authorization' => 'Bearer stub-bearer-token',
+            'If-None-Match' => $etag,
+        ])->getJson(self::WORDWALL_URL);
+
+        $second->assertStatus(304);
+        $this->assertSame('', $second->getContent());
+    }
+
+    public function test_returns_200_with_new_etag_when_list_changes(): void
+    {
+        Wordwall::factory()->create(['resource_url' => 'https://wordwall.net/resource/111', 'sort' => 1]);
+
+        $first = $this->getJsonWithToken(self::WORDWALL_URL);
+        $first->assertOk();
+        $oldEtag = $first->headers->get('ETag');
+        $this->assertNotNull($oldEtag);
+
+        // 清單變動（新增一筆）→ 帶舊 ETag 重新請求應拿到 200 與不同的 ETag
+        Wordwall::factory()->create(['resource_url' => 'https://wordwall.net/resource/222', 'sort' => 2]);
+
+        $second = $this->withHeaders([
+            'Authorization' => 'Bearer stub-bearer-token',
+            'If-None-Match' => $oldEtag,
+        ])->getJson(self::WORDWALL_URL);
+
+        $second->assertOk();
+        $second->assertJsonCount(2, 'data');
+        $this->assertNotSame($oldEtag, $second->headers->get('ETag'));
+    }
+
     public function test_rate_limit_blocks_after_60_requests(): void
     {
         for ($i = 1; $i <= 60; $i++) {
