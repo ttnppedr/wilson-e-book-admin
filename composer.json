@@ -11,6 +11,7 @@
         "laravel/framework": "^13.0",
         "laravel/nightwatch": "^1.26",
         "laravel/tinker": "^3.0",
+        "league/flysystem-aws-s3-v3": "^3.0",
         "masterix21/laravel-licensing-filament-manager": "^1.2",
         "owen-it/laravel-auditing": "^14.0"
     },

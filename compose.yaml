@@ -23,6 +23,26 @@ services:
             - '.:/var/www/html'
         networks:
             - sail
+    minio:
+        image: 'minio/minio:latest'
+        # OrbStack 網域：Mac 與其他容器皆可解析同一 host，用 :9000 直連（純 HTTP），
+        # 讓 presigned 上傳的簽章 host 在「瀏覽器端 PUT」與「PHP 容器端 SDK」兩邊一致。
+        labels:
+            - 'dev.orbstack.domains=minio.wilson-e-book-admin.local'
+        ports:
+            - '${FORWARD_MINIO_PORT:-9000}:9000'
+            - '${FORWARD_MINIO_CONSOLE_PORT:-8900}:8900'
+        environment:
+            MINIO_ROOT_USER: '${AWS_ACCESS_KEY_ID:-sail}'
+            MINIO_ROOT_PASSWORD: '${AWS_SECRET_ACCESS_KEY:-password}'
+        volumes:
+            - 'sail-minio:/data/minio'
+        networks:
+            - sail
+        command: 'minio server /data/minio --console-address ":8900"'
 networks:
     sail:
         driver: bridge
+volumes:
+    sail-minio:
+        driver: local
