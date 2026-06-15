@@ -50,8 +50,10 @@ class AppServiceProvider extends ServiceProvider
             (int) config('licensing.rate_limit.validate_per_minute', 60)
         )->by($this->licensingRateLimitKey($request)));
 
+        // key 帶上 path：讓 /v1/wordwalls 與 /v1/wordwall-categories 各自有獨立的 60/min 配額，
+        // 避免 App 兩層導覽（先抓分類、再抓遊戲）＋背景刷新時兩端點互相排擠額度。
         RateLimiter::for('api-wordwall', fn (Request $request) => Limit::perMinute(60)
-            ->by(sha1((string) $request->ip())));
+            ->by(sha1($request->ip().'|'.$request->path())));
     }
 
     /**

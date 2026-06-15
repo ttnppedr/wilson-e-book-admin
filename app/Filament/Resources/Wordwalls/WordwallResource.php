@@ -4,8 +4,10 @@ namespace App\Filament\Resources\Wordwalls;
 
 use App\Filament\Resources\Wordwalls\Pages\ManageWordwalls;
 use App\Models\Wordwall;
+use App\Models\WordwallCategory;
 use BackedEnum;
 use Filament\Actions\DeleteAction;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
@@ -38,6 +40,12 @@ class WordwallResource extends Resource
                     ->unique(ignoreRecord: true)
                     ->maxLength(255)
                     ->placeholder('https://wordwall.net/resource/109915454'),
+                Select::make('wordwall_category_id')
+                    ->label('遊戲分類')
+                    ->options(WordwallCategory::pluck('name', 'id'))
+                    ->native(false)
+                    ->searchable()
+                    ->placeholder('無分類'),
             ]);
     }
 
@@ -47,6 +55,10 @@ class WordwallResource extends Resource
             ->columns([
                 TextColumn::make('resource_url')
                     ->label('Resource 網址')
+                    ->searchable(),
+                TextColumn::make('category.name')
+                    ->label('遊戲分類')
+                    ->placeholder('無分類')
                     ->searchable(),
                 TextColumn::make('sort')
                     ->label('排序')

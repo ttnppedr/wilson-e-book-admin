@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\LicenseController;
 use App\Http\Controllers\Api\ValidateController;
+use App\Http\Controllers\Api\WordwallCategoryController;
 use App\Http\Controllers\Api\WordwallController;
 use App\Http\Middleware\SetResponseEtag;
 use App\Http\Middleware\VerifyBearerToken;
@@ -33,4 +34,12 @@ Route::prefix('v1')
                 SetResponseEtag::class,
             ])
             ->name('v1.wordwalls');
+
+        Route::get('wordwall-categories', WordwallCategoryController::class)
+            ->middleware([
+                'throttle:api-wordwall',
+                VerifyBearerToken::class,
+                SetResponseEtag::class,
+            ])
+            ->name('v1.wordwall-categories');
     });

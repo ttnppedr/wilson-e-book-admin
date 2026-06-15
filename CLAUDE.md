@@ -21,7 +21,7 @@ Wilson 電子書管理後台，基於 Laravel 13 + Filament v5 建構，整合 `
 - **時區**: 顯示用 `Asia/Taipei`（GMT+8），資料庫儲存為 UTC
 - **Docker**: Sail 使用自訂 Dockerfile（`docker/8.5/Dockerfile`），已加入 `php8.5-gmp` 擴充套件
 - **Pint**: 編輯 PHP 檔案後由 PostToolUse hook 自動逐檔格式化；手動整批格式化用 `vendor/bin/sail bin pint --dirty`
-- **排程與 CLI**: `licensing:check-expirations` 每日把過期 License 由 active→grace→expired（`routes/console.php`，受 `config/licensing.php` 的 `scheduler.check_expirations` 控制，`onOneServer`+`withoutOverlapping`）。另有 `content-key:create`/`content-key:list`、`licensing:passphrase-generate` 等 CLI。Wordwall（model + Filament resource + `v1/wordwalls` API）非 audit 對象
+- **排程與 CLI**: `licensing:check-expirations` 每日把過期 License 由 active→grace→expired（`routes/console.php`，受 `config/licensing.php` 的 `scheduler.check_expirations` 控制，`onOneServer`+`withoutOverlapping`）。另有 `content-key:create`/`content-key:list`、`licensing:passphrase-generate` 等 CLI。Wordwall 與 WordwallCategory（遊戲分類，name + 圖片；與 Wordwall 為 nullable 一對多，刪分類時遊戲 FK `nullOnDelete`）皆非 audit 對象（model + Filament resource + `v1/wordwalls`、`v1/wordwall-categories` API），故可合法用 `reorderable('sort')`
 
 ## API 層
 
@@ -30,6 +30,7 @@ Wilson 電子書管理後台，基於 Laravel 13 + Filament v5 建構，整合 `
 - `POST api/licensing/v1/activate` — `Api\LicenseController::activate`，ECDH(X25519) content key wrapping + 簽發 PASETO token。Throttle `licensing-activate`
 - `POST api/licensing/v1/validate` — `Api\ValidateController`，heartbeat 合併，需回帶 activate 簽發的 PASETO token（`VerifyBearerToken`）。Throttle `licensing-validate`
 - `GET api/v1/wordwalls` — `Api\WordwallController`，需 bearer token + ETag 條件式請求（`SetResponseEtag`）。Throttle `api-wordwall`
+- `GET api/v1/wordwall-categories` — `Api\WordwallCategoryController`，**巢狀**回傳每個分類（`id, name, image_url, sort`）+ 其底下依 `sort` 排序的 wordwalls（`id, sort, resource_url`），供 App 遊戲頁兩層導覽（分類 → 該分類的遊戲）。需 bearer token + ETag（`SetResponseEtag`）。Throttle `api-wordwall`。圖片 `image_url` 由 `WordwallCategory::image_url` accessor 依**預設 filesystem disk** 產生絕對網址（生產 `FILESYSTEM_DISK=s3`；本機開發用 `public` + `storage:link`，預設 `local` disk 為私有、`Storage::url()` 回相對路徑且服務時 403）。兩層 query 皆加 `orderBy('id')` tie-break 確保 ETag 穩定
 
 **Vendor 覆寫（升級 gotcha）**: 三處**複製自 vendor 並就地插入自訂邏輯**的覆寫——`Api\LicenseController extends` vendor `BaseLicenseController`（`activate()`）、`ValidateController extends LicenseController`（`validateLicense()`）、`App\Services\WilsonPasetoTokenService extends` vendor `PasetoTokenService`（`issue()`，PASETO 簽章核心）。方法註解皆標註「對齊版本：vendor 2.1.1」。**升級 `masterix21/laravel-licensing` 時務必逐一重新對齊 parent 的最新實作**——例如 vendor 自 2.0.1 起把 signing key 建構改為「取前 32 bytes seed 經 `AsymmetricSecretKey::v4()` 重新推導 keypair」（`buildSecretKey()`），以通過 paragonie/paseto 3.5 的 v4 misuse-resistance 檢查；此修正需同步移植，否則輪替到特定金鑰時 `issue()` 會簽章失敗。此真實簽發路徑由 `tests/Feature/Api/LicensePasetoIssuanceTest.php`（真實 root/signing key、不 mock，含 activate 端點端對端解 content key）守護；其餘 API 測試以 `MocksLicenseTokenVerifier` mock 掉 verifier 故碰不到此路徑，另有 `tests/e2e_activate_verify.php` 手動 E2E 腳本。
 
@@ -37,7 +38,7 @@ Wilson 電子書管理後台，基於 Laravel 13 + Filament v5 建構，整合 `
 
 **統一錯誤格式**: 一律 `{success, error: {code, message}}`。5xx 全部遮蔽成 generic `SERVER_ERROR`，完整 exception 記到 `api` log channel（`storage/logs/api-YYYY-MM-DD.log`），**絕不**回傳 stack trace。兩層防線：controller 的 `serverError()` helper + `bootstrap/app.php` 全域 render callback（含 `RATE_LIMITED` 429 + `Retry-After`）。
 
-**Rate limiter**: 定義在 `AppServiceProvider::boot()`。`licensing-activate`/`licensing-validate` 用 `sha1(IP|fingerprint)` 複合鍵、limit 取自 `config/licensing.php` 的 `rate_limit.*`；`api-wordwall` 用 IP。
+**Rate limiter**: 定義在 `AppServiceProvider::boot()`。`licensing-activate`/`licensing-validate` 用 `sha1(IP|fingerprint)` 複合鍵、limit 取自 `config/licensing.php` 的 `rate_limit.*`；`api-wordwall`（`v1/wordwalls` 與 `v1/wordwall-categories` 共用此具名 limiter）用 `sha1(IP|path)`——key 帶 path 讓兩端點各自獨立 60/min、不互相排擠。
 
 **Middleware**: `LogApiCall`（prepend 到所有 api 請求）、`VerifyBearerToken`（PASETO 驗證）、`SetResponseEtag`（ETag）。
 

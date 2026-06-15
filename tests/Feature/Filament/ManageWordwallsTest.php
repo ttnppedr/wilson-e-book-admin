@@ -5,6 +5,7 @@ namespace Tests\Feature\Filament;
 use App\Filament\Resources\Wordwalls\Pages\ManageWordwalls;
 use App\Models\User;
 use App\Models\Wordwall;
+use App\Models\WordwallCategory;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\Testing\TestAction;
@@ -99,6 +100,37 @@ class ManageWordwallsTest extends TestCase
         Livewire::test(ManageWordwalls::class)
             ->callAction(CreateAction::class, data: ['resource_url' => 'https://wordwall.net/resource/999'])
             ->assertHasActionErrors(['resource_url' => ['unique']]);
+    }
+
+    public function test_can_assign_category_when_creating_wordwall(): void
+    {
+        $category = WordwallCategory::factory()->create();
+
+        Livewire::test(ManageWordwalls::class)
+            ->callAction(CreateAction::class, data: [
+                'resource_url' => 'https://wordwall.net/resource/501',
+                'wordwall_category_id' => $category->id,
+            ])
+            ->assertHasNoActionErrors();
+
+        $this->assertDatabaseHas('wordwalls', [
+            'resource_url' => 'https://wordwall.net/resource/501',
+            'wordwall_category_id' => $category->id,
+        ]);
+    }
+
+    public function test_can_create_wordwall_without_category(): void
+    {
+        Livewire::test(ManageWordwalls::class)
+            ->callAction(CreateAction::class, data: [
+                'resource_url' => 'https://wordwall.net/resource/502',
+            ])
+            ->assertHasNoActionErrors();
+
+        $this->assertDatabaseHas('wordwalls', [
+            'resource_url' => 'https://wordwall.net/resource/502',
+            'wordwall_category_id' => null,
+        ]);
     }
 
     public function test_can_delete_wordwall_via_row_action(): void

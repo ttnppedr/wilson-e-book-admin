@@ -8,11 +8,12 @@ use Illuminate\Http\Resources\Json\JsonResource;
 class WordwallResource extends JsonResource
 {
     /**
-     * @return array{sort: int, resource_url: string}
+     * @return array{id: int, sort: int, resource_url: string}
      */
     public function toArray(Request $request): array
     {
         return [
+            'id' => $this->id,
             'sort' => $this->sort,
             'resource_url' => $this->resource_url,
         ];

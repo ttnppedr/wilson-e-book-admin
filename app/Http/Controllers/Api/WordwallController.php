@@ -12,7 +12,8 @@ class WordwallController extends Controller
 {
     public function __invoke(Request $request): ResourceCollection
     {
-        $wordwalls = Wordwall::orderBy('sort')->get();
+        // 以 id 作為次要排序鍵，確保 sort 碰撞時回傳順序穩定（ETag/304 才不會無謂失效）。
+        $wordwalls = Wordwall::orderBy('sort')->orderBy('id')->get();
 
         return WordwallResource::collection($wordwalls)
             ->additional(['meta' => ['total' => $wordwalls->count()]]);

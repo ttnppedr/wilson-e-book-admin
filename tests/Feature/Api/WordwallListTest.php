@@ -95,7 +95,7 @@ class WordwallListTest extends TestCase
         $response->assertOk();
         $response->assertJsonStructure([
             'data' => [
-                '*' => ['sort', 'resource_url'],
+                '*' => ['id', 'sort', 'resource_url'],
             ],
             'meta' => ['total'],
         ]);
