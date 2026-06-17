@@ -7,6 +7,7 @@ use App\Models\Wordwall;
 use App\Models\WordwallCategory;
 use BackedEnum;
 use Filament\Actions\DeleteAction;
+use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
@@ -33,6 +34,8 @@ class WordwallResource extends Resource
                 TextInput::make('resource_url')
                     ->label('Resource 網址')
                     ->required()
+                    // 編輯時鎖定網址（disabled 欄位不會 dehydrate，不會被寫回），僅供調整分類。
+                    ->disabled(fn (string $operation): bool => $operation === 'edit')
                     ->rules(['regex:#^https://wordwall\.net/#'])
                     ->validationMessages([
                         'regex' => '網址必須以 https://wordwall.net/ 開頭',
@@ -68,6 +71,7 @@ class WordwallResource extends Resource
             ->reorderable('sort')
             ->paginated(false)
             ->recordActions([
+                EditAction::make(),
                 DeleteAction::make(),
             ]);
     }

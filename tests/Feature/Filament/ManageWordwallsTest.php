@@ -8,6 +8,7 @@ use App\Models\Wordwall;
 use App\Models\WordwallCategory;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
+use Filament\Actions\EditAction;
 use Filament\Actions\Testing\TestAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -133,6 +134,36 @@ class ManageWordwallsTest extends TestCase
         ]);
     }
 
+    public function test_category_relationship_resolves_via_foreign_key(): void
+    {
+        // 守護 belongsTo 外鍵設定：必須對到 wordwall_category_id（非預設推導的 category_id），
+        // 否則列表「遊戲分類」欄會把有分類的 wordwall 都顯示成「無分類」。
+        $category = WordwallCategory::factory()->create();
+        $wordwall = Wordwall::create([
+            'resource_url' => 'https://wordwall.net/resource/800',
+            'wordwall_category_id' => $category->id,
+            'sort' => 1,
+        ]);
+
+        $resolved = $wordwall->fresh()->category;
+
+        $this->assertNotNull($resolved, 'category() 關聯應解析得到分類');
+        $this->assertSame($category->id, $resolved->id);
+    }
+
+    public function test_table_displays_assigned_category_name(): void
+    {
+        $category = WordwallCategory::factory()->create(['name' => '數學遊戲分類']);
+        $wordwall = Wordwall::create([
+            'resource_url' => 'https://wordwall.net/resource/801',
+            'wordwall_category_id' => $category->id,
+            'sort' => 1,
+        ]);
+
+        Livewire::test(ManageWordwalls::class)
+            ->assertTableColumnStateSet('category.name', '數學遊戲分類', record: $wordwall);
+    }
+
     public function test_can_delete_wordwall_via_row_action(): void
     {
         $wordwall = Wordwall::create([
@@ -146,14 +177,69 @@ class ManageWordwallsTest extends TestCase
         $this->assertDatabaseMissing('wordwalls', ['id' => $wordwall->id]);
     }
 
-    public function test_edit_action_does_not_exist_on_row(): void
+    public function test_can_edit_category_via_row_action(): void
     {
+        $original = WordwallCategory::factory()->create();
+        $target = WordwallCategory::factory()->create();
         $wordwall = Wordwall::create([
-            'resource_url' => 'https://wordwall.net/resource/400',
+            'resource_url' => 'https://wordwall.net/resource/600',
+            'wordwall_category_id' => $original->id,
             'sort' => 1,
         ]);
 
         Livewire::test(ManageWordwalls::class)
-            ->assertActionDoesNotExist(TestAction::make('edit')->table($wordwall));
+            ->callAction(
+                TestAction::make(EditAction::class)->table($wordwall),
+                data: ['wordwall_category_id' => $target->id],
+            )
+            ->assertHasNoActionErrors();
+
+        $this->assertDatabaseHas('wordwalls', [
+            'id' => $wordwall->id,
+            'resource_url' => 'https://wordwall.net/resource/600',
+            'wordwall_category_id' => $target->id,
+        ]);
+    }
+
+    public function test_can_clear_category_via_row_action(): void
+    {
+        $category = WordwallCategory::factory()->create();
+        $wordwall = Wordwall::create([
+            'resource_url' => 'https://wordwall.net/resource/601',
+            'wordwall_category_id' => $category->id,
+            'sort' => 1,
+        ]);
+
+        Livewire::test(ManageWordwalls::class)
+            ->callAction(
+                TestAction::make(EditAction::class)->table($wordwall),
+                data: ['wordwall_category_id' => null],
+            )
+            ->assertHasNoActionErrors();
+
+        $this->assertDatabaseHas('wordwalls', [
+            'id' => $wordwall->id,
+            'wordwall_category_id' => null,
+        ]);
+    }
+
+    public function test_resource_url_is_locked_on_edit(): void
+    {
+        $wordwall = Wordwall::create([
+            'resource_url' => 'https://wordwall.net/resource/700',
+            'sort' => 1,
+        ]);
+
+        // 網址欄位在編輯時為 disabled、不會 dehydrate，即使送入新值也不會被寫回。
+        Livewire::test(ManageWordwalls::class)
+            ->callAction(
+                TestAction::make(EditAction::class)->table($wordwall),
+                data: ['resource_url' => 'https://wordwall.net/resource/999'],
+            );
+
+        $this->assertDatabaseHas('wordwalls', [
+            'id' => $wordwall->id,
+            'resource_url' => 'https://wordwall.net/resource/700',
+        ]);
     }
 }

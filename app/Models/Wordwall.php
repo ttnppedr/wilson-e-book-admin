@@ -31,6 +31,7 @@ class Wordwall extends Model
      */
     public function category(): BelongsTo
     {
-        return $this->belongsTo(WordwallCategory::class);
+        // 必須明確指定外鍵：belongsTo 預設依方法名推導為 category_id，但實際欄位是 wordwall_category_id。
+        return $this->belongsTo(WordwallCategory::class, 'wordwall_category_id');
     }
 }
