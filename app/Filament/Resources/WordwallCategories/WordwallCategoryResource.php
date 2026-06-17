@@ -6,6 +6,7 @@ use App\Filament\Resources\WordwallCategories\Pages\ManageWordwallCategories;
 use App\Models\WordwallCategory;
 use BackedEnum;
 use Filament\Actions\DeleteAction;
+use Filament\Actions\EditAction;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
@@ -69,6 +70,7 @@ class WordwallCategoryResource extends Resource
             ->reorderable('sort')
             ->paginated(false)
             ->recordActions([
+                EditAction::make(),
                 DeleteAction::make(),
             ]);
     }

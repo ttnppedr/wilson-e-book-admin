@@ -28,6 +28,21 @@ class WordwallCategory extends Model
 
     protected static function booted(): void
     {
+        // 換圖時移除被取代的舊圖檔，避免在 S3 上累積孤兒檔。
+        // updated 事件在 save 之後、syncOriginal 之前觸發，故此時 getOriginal() 仍為舊路徑、
+        // wasChanged() 反映本次變更；只刪「真的被換掉」且原本存在的圖。
+        static::updated(function (WordwallCategory $category): void {
+            if (! $category->wasChanged('image_path')) {
+                return;
+            }
+
+            $previousPath = $category->getOriginal('image_path');
+
+            if ($previousPath !== null) {
+                Storage::disk(config('filesystems.default'))->delete($previousPath);
+            }
+        });
+
         // 刪除分類時一併移除其圖片檔，避免在 S3 上累積孤兒檔。
         // 透過 Filament DeleteAction 走單筆 $record->delete() 會觸發此事件。
         static::deleted(function (WordwallCategory $category): void {

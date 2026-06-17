@@ -8,6 +8,7 @@ use App\Models\Wordwall;
 use App\Models\WordwallCategory;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
+use Filament\Actions\EditAction;
 use Filament\Actions\Testing\TestAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -184,11 +185,66 @@ class ManageWordwallCategoriesTest extends TestCase
         $this->assertSame(3, $b->fresh()->sort);
     }
 
-    public function test_edit_action_does_not_exist_on_row(): void
+    public function test_can_edit_name_via_row_action(): void
     {
-        $category = WordwallCategory::factory()->create();
+        $path = 'wordwall-categories/keep.png';
+        $category = WordwallCategory::factory()->create(['name' => '舊名稱', 'image_path' => $path]);
+        Storage::disk('s3')->put($path, 'fake-bytes');
 
         Livewire::test(ManageWordwallCategories::class)
-            ->assertActionDoesNotExist(TestAction::make('edit')->table($category));
+            ->callAction(
+                TestAction::make(EditAction::class)->table($category),
+                data: ['name' => '新名稱'],
+            )
+            ->assertHasNoActionErrors();
+
+        // 只改名稱：image_path 不變、舊圖檔保留（未換圖不應觸發清理）。
+        $this->assertDatabaseHas('wordwall_categories', [
+            'id' => $category->id,
+            'name' => '新名稱',
+            'image_path' => $path,
+        ]);
+        Storage::disk('s3')->assertExists($path);
+    }
+
+    public function test_replacing_image_removes_previous_file(): void
+    {
+        // 守護 model 的 updated 事件：換圖（image_path 變更）時應刪除被取代的舊圖、保留新圖，
+        // 避免在 S3 上累積孤兒檔。直接走 model 層以精準觸發事件，不依賴 FileUpload 的上傳模擬。
+        $oldPath = 'wordwall-categories/old.png';
+        $newPath = 'wordwall-categories/new.png';
+        $category = WordwallCategory::factory()->create(['image_path' => $oldPath]);
+        Storage::disk('s3')->put($oldPath, 'old-bytes');
+        Storage::disk('s3')->put($newPath, 'new-bytes');
+
+        $category->update(['image_path' => $newPath]);
+
+        Storage::disk('s3')->assertMissing($oldPath);
+        Storage::disk('s3')->assertExists($newPath);
+    }
+
+    public function test_updating_non_image_field_keeps_image_file(): void
+    {
+        // 反向守護：只改其他欄位（image_path 未變）時，不應誤刪圖片檔。
+        $path = 'wordwall-categories/stable.png';
+        $category = WordwallCategory::factory()->create(['image_path' => $path]);
+        Storage::disk('s3')->put($path, 'bytes');
+
+        $category->update(['name' => '改個名字']);
+
+        Storage::disk('s3')->assertExists($path);
+    }
+
+    public function test_editing_name_to_another_existing_name_is_rejected(): void
+    {
+        WordwallCategory::factory()->create(['name' => '已存在']);
+        $category = WordwallCategory::factory()->create(['name' => '可改的']);
+
+        Livewire::test(ManageWordwallCategories::class)
+            ->callAction(
+                TestAction::make(EditAction::class)->table($category),
+                data: ['name' => '已存在'],
+            )
+            ->assertHasActionErrors(['name' => ['unique']]);
     }
 }
