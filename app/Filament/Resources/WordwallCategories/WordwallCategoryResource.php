@@ -43,7 +43,9 @@ class WordwallCategoryResource extends Resource
                     ->image()
                     ->required()
                     ->disk(config('filesystems.default'))
-                    ->visibility('public')
+                    // 物件維持 private：對外由 App 經轉址端點取 presigned 短效網址，
+                    // 後台預覽則由 Filament 對 private disk 自動簽發 temporaryUrl。
+                    ->visibility('private')
                     ->directory('wordwall-categories')
                     ->maxSize(2048),
             ]);
@@ -55,7 +57,9 @@ class WordwallCategoryResource extends Resource
             ->columns([
                 ImageColumn::make('image_path')
                     ->label('圖片')
-                    ->disk(config('filesystems.default')),
+                    ->disk(config('filesystems.default'))
+                    // private disk：Filament 自動以 temporaryUrl 簽發後台預覽網址（過期對齊整點）。
+                    ->visibility('private'),
                 TextColumn::make('name')
                     ->label('名稱')
                     ->searchable(),

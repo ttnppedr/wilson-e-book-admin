@@ -113,9 +113,10 @@ class WordwallCategoryListTest extends TestCase
         ]);
     }
 
-    public function test_image_url_is_full_url_built_from_default_disk(): void
+    public function test_image_url_points_to_token_protected_redirect_endpoint(): void
     {
-        WordwallCategory::factory()->create([
+        // image_url 指向穩定的轉址端點（非 S3 簽章網址），實際 presigned URL 由該端點即時簽發。
+        $category = WordwallCategory::factory()->create([
             'image_path' => 'wordwall-categories/math.png',
             'sort' => 1,
         ]);
@@ -124,18 +125,21 @@ class WordwallCategoryListTest extends TestCase
 
         $response->assertOk();
         $this->assertSame(
-            'https://cdn.test/wordwall/wordwall-categories/math.png',
+            route('v1.wordwall-categories.image', [
+                'wordwallCategory' => $category->id,
+                'v' => substr(md5('wordwall-categories/math.png'), 0, 8),
+            ]),
             $response->json('data.0.image_url')
         );
     }
 
-    public function test_image_url_is_absolute_even_on_disk_returning_relative_path(): void
+    public function test_image_url_is_absolute_and_independent_of_filesystem_disk(): void
     {
-        // local disk 的 Storage::url() 回傳相對路徑 /storage/...，accessor 應補成絕對網址，
-        // 確保原生 App 永遠拿到完整可解析的 URL。
+        // image_url 不再經 Storage::url()，故與 disk 無關：永遠是指向轉址端點的絕對網址，
+        // 且不外洩原始儲存路徑（image_path）。
         config(['filesystems.default' => 'local']);
 
-        WordwallCategory::factory()->create([
+        $category = WordwallCategory::factory()->create([
             'image_path' => 'wordwall-categories/math.png',
             'sort' => 1,
         ]);
@@ -145,7 +149,33 @@ class WordwallCategoryListTest extends TestCase
         $response->assertOk();
         $imageUrl = $response->json('data.0.image_url');
         $this->assertStringStartsWith('http', $imageUrl);
-        $this->assertStringEndsWith('/storage/wordwall-categories/math.png', $imageUrl);
+        $this->assertStringContainsString('/api/v1/wordwall-categories/'.$category->id.'/image', $imageUrl);
+        $this->assertStringNotContainsString('wordwall-categories/math.png', $imageUrl);
+    }
+
+    public function test_etag_changes_when_category_image_is_swapped(): void
+    {
+        // 換圖（image_path 變動）→ image_url 的 v 參數改變 → 清單 body 變動 → ETag 失效，
+        // 讓背景重整的 App 得知需重抓清單與新圖；避免取到舊圖快取。
+        $category = WordwallCategory::factory()->create([
+            'image_path' => 'wordwall-categories/old.png',
+            'sort' => 1,
+        ]);
+
+        $first = $this->getJsonWithToken(self::CATEGORIES_URL);
+        $first->assertOk();
+        $oldEtag = $first->headers->get('ETag');
+        $this->assertNotNull($oldEtag);
+
+        $category->update(['image_path' => 'wordwall-categories/new.png']);
+
+        $second = $this->withHeaders([
+            'Authorization' => 'Bearer stub-bearer-token',
+            'If-None-Match' => $oldEtag,
+        ])->getJson(self::CATEGORIES_URL);
+
+        $second->assertOk();
+        $this->assertNotSame($oldEtag, $second->headers->get('ETag'));
     }
 
     public function test_response_only_exposes_whitelisted_fields(): void

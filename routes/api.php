@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\LicenseController;
 use App\Http\Controllers\Api\ValidateController;
 use App\Http\Controllers\Api\WordwallCategoryController;
+use App\Http\Controllers\Api\WordwallCategoryImageController;
 use App\Http\Controllers\Api\WordwallController;
 use App\Http\Middleware\SetResponseEtag;
 use App\Http\Middleware\VerifyBearerToken;
@@ -42,4 +43,14 @@ Route::prefix('v1')
                 SetResponseEtag::class,
             ])
             ->name('v1.wordwall-categories');
+
+        // 分類圖片：物件維持 private，此端點即時簽發 S3 presigned 短效網址並 302 轉址。
+        // 不掛 SetResponseEtag（回應為轉址非可快取 body）；throttle 具名 limiter 以 path
+        // 為 key，故每個分類圖各自獨立計數、不與清單端點互相排擠。
+        Route::get('wordwall-categories/{wordwallCategory}/image', WordwallCategoryImageController::class)
+            ->middleware([
+                'throttle:api-wordwall',
+                VerifyBearerToken::class,
+            ])
+            ->name('v1.wordwall-categories.image');
     });
