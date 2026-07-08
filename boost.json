@@ -2,12 +2,20 @@
     "agents": [
         "claude_code"
     ],
-    "cloud": false,
+    "cloud": true,
     "guidelines": true,
     "mcp": true,
-    "nightwatch_mcp": false,
+    "nightwatch": true,
+    "packages": [
+        "filament/filament",
+        "filament/blueprint"
+    ],
     "sail": true,
     "skills": [
-        "laravel-best-practices"
+        "laravel-best-practices",
+        "configure-nightwatch",
+        "tailwindcss-development",
+        "filament-security-audit",
+        "deploying-laravel-cloud"
     ]
 }
