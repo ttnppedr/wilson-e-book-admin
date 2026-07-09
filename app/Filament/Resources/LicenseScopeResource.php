@@ -13,6 +13,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseScopeResource as BaseLicenseScopeResource;
 use LucaLongo\Licensing\Models\LicenseScope;
 
@@ -107,7 +108,8 @@ class LicenseScopeResource extends BaseLicenseScopeResource
 
                 Tables\Columns\TextColumn::make('active_licenses_count')
                     ->label(__('laravel-licensing-filament-manager::license-scope.fields.active_licenses_count'))
-                    ->state(fn (LicenseScope $record) => $record->licenses()->where('status', 'active')->count())
+                    ->counts(['licenses as active_licenses_count' => fn (Builder $query) => $query->where('status', 'active')])
+                    ->sortable()
                     ->badge()
                     ->color('success'),
             ])

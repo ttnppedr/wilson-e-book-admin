@@ -51,9 +51,8 @@ class ValidateController extends LicenseController
             );
             $usage->fill(['meta' => $currentMeta]);
             $usage->save();
+            $usage->refresh();
         }
-
-        $usage->refresh();
 
         return $this->success([
             'license' => $this->formatLicense($license),

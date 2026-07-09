@@ -19,16 +19,25 @@ class LogApiCall
 
         $duration = round((microtime(true) - $startTime) * 1000, 2);
 
+        $status = $response->getStatusCode();
+
+        // GET 成功（含 304）不記 response body：SetResponseEtag 轉 304 時只清 HTTP
+        // content，JsonResponse 內部 $data 仍是全量，照記會抵銷 ETag 省下的成本。
+        // 錯誤與寫入類請求保留全量 body 供除錯。
+        $shouldLogResponseBody = $status >= 400 || ! $request->isMethod('GET');
+
         Log::channel('api')->info(json_encode([
             'method' => $request->method(),
             'uri' => $request->getRequestUri(),
-            'status' => $response->getStatusCode(),
+            'status' => $status,
             'duration_ms' => $duration,
             'ip' => $request->ip(),
             'user_agent' => $request->userAgent(),
-            'headers' => $request->headers->all(),
+            'headers' => collect($request->headers->all())
+                ->except(['authorization', 'cookie'])
+                ->all(),
             'request' => $request->except(['password']),
-            'response' => $response instanceof JsonResponse
+            'response' => $shouldLogResponseBody && $response instanceof JsonResponse
                 ? $response->getData(assoc: true)
                 : null,
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));

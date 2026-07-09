@@ -113,4 +113,31 @@ class EditLicenseTest extends TestCase
         Livewire::test(EditLicense::class, ['record' => $license->getRouteKey()])
             ->assertActionHidden('delete');
     }
+
+    public function test_sensitive_attributes_are_hidden_from_serialization(): void
+    {
+        $license = $this->createLicense([
+            'meta' => ['encrypted_key' => 'SENSITIVE-CIPHERTEXT-MARKER'],
+        ]);
+
+        $serialized = $license->fresh()->toArray();
+
+        $this->assertArrayNotHasKey('key_hash', $serialized);
+        $this->assertArrayNotHasKey('meta', $serialized);
+    }
+
+    public function test_edit_page_does_not_expose_key_hash_or_encrypted_key(): void
+    {
+        $license = $this->createLicense([
+            'status' => LicenseStatus::Active,
+            'activated_at' => now(),
+            'meta' => ['encrypted_key' => 'SENSITIVE-CIPHERTEXT-MARKER'],
+        ]);
+
+        // Filament Edit 頁以 attributesToArray() 填表單，非 $hidden 屬性會經
+        // Livewire snapshot 序列化到前端 JS——斷言兩個敏感欄位不再出現在渲染輸出
+        Livewire::test(EditLicense::class, ['record' => $license->getRouteKey()])
+            ->assertDontSee($license->key_hash)
+            ->assertDontSee('SENSITIVE-CIPHERTEXT-MARKER');
+    }
 }
