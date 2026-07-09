@@ -54,9 +54,24 @@ class ValidateController extends LicenseController
             $usage->refresh();
         }
 
+        // 簽發一個「驗證收據」token：與 activate 的 token 同樣由 signing key 簽章、
+        // footer 帶完整憑證鏈，但**不含 wrapped_content_key**（App 已持有 content
+        // key）。其 force_online_after 由 issue() 重算為 now + 設定窗，等於每次成功
+        // validate 都把強制上線截止點往後推。App 用內嵌 root 驗證後替換已存 token，
+        // 使「最近是否線上驗證過」的權威變成不可竄改的簽名 claim（修補 HIGH #6：
+        // 原本 App 依賴 SecureStorage 明文 lastValidateAt，root 裝置可竄改延後上線）。
+        $ttlDays = $license->expires_at !== null
+            ? max(1, (int) ceil(now()->diffInDays($license->expires_at, absolute: true)))
+            : self::PERPETUAL_TOKEN_TTL_DAYS;
+
+        $validationToken = $this->licensing->issueToken($license, $usage, [
+            'ttl_days' => $ttlDays,
+        ]);
+
         return $this->success([
             'license' => $this->formatLicense($license),
             'usage' => $this->formatUsage($usage),
+            'validation_token' => $validationToken,
         ]);
     }
 }
