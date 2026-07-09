@@ -21,8 +21,10 @@ class LicenseController extends BaseLicenseController
      * 100 年 (36500 天) 實質上超過任何合理使用年限，等同永不過期。
      * 有到期日的授權仍維持「TTL 綁定剩餘天數」的動態計算，確保 token
      * 不會活得比授權本身久。
+     *
+     * 必須是 protected：ValidateController（子類）簽發驗證收據時也要用。
      */
-    private const PERPETUAL_TOKEN_TTL_DAYS = 36500;
+    protected const PERPETUAL_TOKEN_TTL_DAYS = 36500;
 
     /**
      * ⚠️ 此方法複製自 vendor LicenseController::activate()，在固定位置插入

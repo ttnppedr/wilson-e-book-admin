@@ -31,6 +31,8 @@ use Tests\TestCase;
  *   1. WilsonPasetoTokenService::issue() 簽出的 token 能被 signing public key 驗章，
  *      且 extra_claims（wrapped_content_key）完整保留。
  *   2. activate 端點端對端：回傳的 token 可驗章、wrapped content key 可 unwrap 還原。
+ *   3. validate 端點簽發的驗證收據（validation_token）可驗章、不含
+ *      wrapped_content_key，且 force_online_after 隨每次成功 validate 往後推。
  *
  * 對齊守護：vendor 2.0.1 起 signing key 改用 seed-derived `buildSecretKey()` 以通過
  * paseto v4 misuse-resistance。若 issue() 退回舊的 `new AsymmetricSecretKey(...)` 寫法，
@@ -77,7 +79,7 @@ class LicensePasetoIssuanceTest extends TestCase
             ->getClaims();
     }
 
-    private function createActiveLicense(?LicenseScope $scope = null): array
+    private function createActiveLicense(?LicenseScope $scope = null, bool $perpetual = false): array
     {
         $licenseKey = 'PASETO-'.bin2hex(random_bytes(8));
         $license = License::create([
@@ -85,12 +87,51 @@ class LicensePasetoIssuanceTest extends TestCase
             'status' => LicenseStatus::Active,
             'license_scope_id' => $scope?->id,
             'activated_at' => now(),
-            'expires_at' => now()->addDays(30),
+            'expires_at' => $perpetual ? null : now()->addDays(30),
             'max_usages' => 1,
             'meta' => [],
         ]);
 
         return [$licenseKey, $license];
+    }
+
+    /**
+     * 走真實 activate 端點完成啟用，回傳 validate 測試所需的素材
+     * （bearer token、signing public key、license 與 fingerprint）。
+     *
+     * @return array{token: string, signing_public_key: string, license_key: string, license: License, fingerprint: string}
+     */
+    private function activateThroughEndpoint(bool $perpetual = false): array
+    {
+        $cek = ContentEncryptionKey::create([
+            'name' => 'validate-receipt-cek',
+            'encrypted_key' => base64_encode(random_bytes(32)),
+        ]);
+        $scope = LicenseScope::create([
+            'name' => 'Validate Receipt Product',
+            'is_active' => true,
+            'content_encryption_key_id' => $cek->id,
+        ]);
+        [$licenseKey, $license] = $this->createActiveLicense($scope, perpetual: $perpetual);
+
+        $clientPub = sodium_crypto_box_publickey(sodium_crypto_box_keypair());
+        $fingerprint = 'validate-receipt-fp';
+
+        $response = $this->postJson('/api/licensing/v1/activate', [
+            'license_key' => $licenseKey,
+            'fingerprint' => $fingerprint,
+            'client_ephemeral_public_key' => base64_encode($clientPub),
+        ]);
+        $response->assertStatus(200);
+        $data = $response->json('data');
+
+        return [
+            'token' => $data['token'],
+            'signing_public_key' => $data['public_key_bundle']['signing']['public_key'],
+            'license_key' => $licenseKey,
+            'license' => $license,
+            'fingerprint' => $fingerprint,
+        ];
     }
 
     public function test_issue_produces_token_verifiable_by_signing_public_key(): void
@@ -206,5 +247,67 @@ class LicensePasetoIssuanceTest extends TestCase
 
         $this->assertNotFalse($plaintext, 'content key unwrap should succeed');
         $this->assertSame(bin2hex($rawContentKey), bin2hex($plaintext));
+    }
+
+    public function test_validate_endpoint_issues_verifiable_receipt_token_without_content_key(): void
+    {
+        $activation = $this->activateThroughEndpoint();
+        $activateClaims = $this->parseClaims($activation['token'], $activation['signing_public_key']);
+
+        // 模擬 App 三天後回報心跳：驗證收據的 force_online_after 必須比
+        // activate token 的更晚（issue() 以簽發當下的 now 重算）
+        $this->travel(3)->days();
+
+        $response = $this->withToken($activation['token'])->postJson('/api/licensing/v1/validate', [
+            'license_key' => $activation['license_key'],
+            'fingerprint' => $activation['fingerprint'],
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('success', true);
+
+        $validationToken = $response->json('data.validation_token');
+        $this->assertIsString($validationToken);
+        $this->assertStringStartsWith('v4.public.', $validationToken);
+
+        $claims = $this->parseClaims($validationToken, $activation['signing_public_key']);
+
+        // 驗證收據絕不得帶 wrapped_content_key（App 於 activate 時已取得 content key）
+        $this->assertArrayNotHasKey('wrapped_content_key', $claims);
+        $this->assertSame($activation['license']->id, $claims['license_id']);
+        $this->assertSame($activation['fingerprint'], $claims['usage_fingerprint']);
+
+        // HIGH #6 的核心保證：每次成功 validate 都把強制上線截止點往後推
+        $this->assertGreaterThan(
+            strtotime($activateClaims['force_online_after']),
+            strtotime($claims['force_online_after']),
+        );
+    }
+
+    public function test_validate_endpoint_issues_receipt_token_for_perpetual_license(): void
+    {
+        // 永久授權（expires_at = null）走 PERPETUAL_TOKEN_TTL_DAYS 分支——
+        // 該常數定義在父類 LicenseController，若可見性退回 private，
+        // ValidateController 的 self:: 存取會 fatal error，本測試會收到 500
+        $activation = $this->activateThroughEndpoint(perpetual: true);
+
+        $response = $this->withToken($activation['token'])->postJson('/api/licensing/v1/validate', [
+            'license_key' => $activation['license_key'],
+            'fingerprint' => $activation['fingerprint'],
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('success', true);
+
+        $claims = $this->parseClaims($response->json('data.validation_token'), $activation['signing_public_key']);
+
+        $this->assertArrayNotHasKey('wrapped_content_key', $claims);
+        $this->assertArrayNotHasKey('license_expires_at', $claims);
+
+        // TTL 應為 PERPETUAL_TOKEN_TTL_DAYS（36500 天），實質永不過期
+        $this->assertGreaterThan(
+            now()->addDays(36000)->getTimestamp(),
+            strtotime($claims['exp']),
+        );
     }
 }

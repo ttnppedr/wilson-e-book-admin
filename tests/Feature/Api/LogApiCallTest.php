@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\License;
 use App\Models\LicenseUsage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use LucaLongo\Licensing\Enums\LicenseStatus;
 use LucaLongo\Licensing\Enums\UsageStatus;
 use Tests\Concerns\MocksLicenseTokenVerifier;
@@ -116,6 +117,14 @@ class LogApiCallTest extends TestCase
 
     public function test_non_get_success_response_body_is_still_logged(): void
     {
+        // validate 成功時會真實簽發驗證收據 token，需要 root/signing key
+        config([
+            'licensing.crypto.keystore.driver' => 'database',
+            'licensing.crypto.keystore.passphrase' => 'log-api-call-test-passphrase',
+        ]);
+        Artisan::call('licensing:keys:make-root');
+        Artisan::call('licensing:keys:issue-signing', ['--days' => 365]);
+
         $licenseKey = 'LOGTEST'.bin2hex(random_bytes(6));
         $license = License::create([
             'key_hash' => License::hashKey($licenseKey),
