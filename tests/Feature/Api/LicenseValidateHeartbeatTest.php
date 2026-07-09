@@ -4,7 +4,9 @@ namespace Tests\Feature\Api;
 
 use App\Models\License;
 use App\Models\LicenseUsage;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use LucaLongo\Licensing\Enums\LicenseStatus;
 use LucaLongo\Licensing\Enums\UsageStatus;
 use Tests\Concerns\MocksLicenseTokenVerifier;
@@ -91,5 +93,32 @@ class LicenseValidateHeartbeatTest extends TestCase
         $clientData = $usage->fresh()->meta['client_data'] ?? [];
         $this->assertSame('1.2.3', $clientData['app_version'] ?? null);
         $this->assertSame('iPad', $clientData['device_name'] ?? null);
+    }
+
+    public function test_usage_summary_is_correct_and_counts_active_usages_once(): void
+    {
+        // max_usages = 1、一個 active usage → active_usages 1、available_seats 0
+        [$licenseKey] = $this->makeActiveLicenseWithUsage('hb-fp');
+        $this->acceptAnyTokenFor($licenseKey, 'hb-fp');
+
+        $usageCountQueries = 0;
+        DB::listen(function (QueryExecuted $query) use (&$usageCountQueries): void {
+            if (str_contains($query->sql, 'count(*)') && str_contains($query->sql, 'license_usages')) {
+                $usageCountQueries++;
+            }
+        });
+
+        $response = $this->postValidateWithToken([
+            'license_key' => $licenseKey,
+            'fingerprint' => 'hb-fp',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('data.license.active_usages', 1);
+        $response->assertJsonPath('data.license.available_seats', 0);
+
+        // 迴歸防護 formatLicense() 覆寫:vendor 版對同一條件重複 COUNT 兩次
+        // (active_usages 一次、getAvailableSeats() 內部一次),覆寫後只允許一次。
+        $this->assertSame(1, $usageCountQueries);
     }
 }

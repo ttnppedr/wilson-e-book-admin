@@ -165,10 +165,27 @@ class LicenseController extends BaseLicenseController
         return $this->error('SERVER_ERROR', 'Server error', 500);
     }
 
+    /**
+     * 覆寫 vendor formatLicense() 加上 name 欄位，並把 usage summary 改為
+     * 單次 COUNT：vendor 版的 `active_usages`（`activeUsages()->count()`）與
+     * `available_seats`（`getAvailableSeats()` 內部再跑一次相同 COUNT）對同一個
+     * 條件重複查詢兩次，而 activate/validate（心跳）都是熱路徑。此處先以
+     * `$includeUsageSummary = false` 呼叫 parent 略過其 summary，再自行以
+     * 單次 COUNT 補上兩個欄位（`available_seats` 演算法同 vendor
+     * `License::getAvailableSeats()`）。
+     *
+     * 對齊版本：vendor 2.1.1
+     */
     protected function formatLicense(License $license, bool $includeUsageSummary = true): array
     {
-        $data = parent::formatLicense($license, $includeUsageSummary);
+        $data = parent::formatLicense($license, false);
         $data['name'] = $license->name;
+
+        if ($includeUsageSummary) {
+            $activeUsages = $license->activeUsages()->count();
+            $data['active_usages'] = $activeUsages;
+            $data['available_seats'] = max(0, $license->max_usages - $activeUsages);
+        }
 
         return $data;
     }
