@@ -4,7 +4,6 @@ namespace App\Filament\Resources\Wordwalls;
 
 use App\Filament\Resources\Wordwalls\Pages\ManageWordwalls;
 use App\Models\Wordwall;
-use App\Models\WordwallCategory;
 use BackedEnum;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -45,9 +44,12 @@ class WordwallResource extends Resource
                     ->placeholder('https://wordwall.net/resource/109915454'),
                 Select::make('wordwall_category_id')
                     ->label('遊戲分類')
-                    ->options(WordwallCategory::pluck('name', 'id'))
+                    // relationship() 惰性求值:原本 options(pluck()) 在 schema 建構時
+                    // 即查詢,每次 Livewire 互動都多跑一條沒人用到的 query。
+                    ->relationship('category', 'name')
                     ->native(false)
                     ->searchable()
+                    ->preload()
                     ->placeholder('無分類'),
             ]);
     }

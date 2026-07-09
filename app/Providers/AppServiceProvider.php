@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\License;
 use App\Observers\LicenseObserver;
+use Filament\Forms\Components\FileUpload;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -26,6 +27,13 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         License::observe(LicenseObserver::class);
+
+        // 全域防檔案路徑竄改:FileUpload 的 Livewire state 可被 client 改成 disk 上
+        // 任意路徑,preview/download URL 會照簽、儲存會照存。開啟後僅接受「新上傳的
+        // 暫存檔」或「該 record 原本的路徑」。現有欄位（分類圖片）無 fill-from-template
+        // 等合法外部路徑來源,可直接全域套用;未來若有此需求,於該欄位以
+        // allowFilePathUsing: 開白名單。
+        FileUpload::configureUsing(fn (FileUpload $component) => $component->preventFilePathTampering());
 
         // 守門員：LicenseUsage heartbeat 只更新被 $auditExclude 排除的 last_seen_at，
         // 會產生 old_values/new_values 皆空的 audit 記錄；在此攔截避免雜訊污染稽核軌跡。

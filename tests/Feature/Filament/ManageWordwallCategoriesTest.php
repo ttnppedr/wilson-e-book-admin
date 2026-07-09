@@ -247,4 +247,27 @@ class ManageWordwallCategoriesTest extends TestCase
             )
             ->assertHasActionErrors(['name' => ['unique']]);
     }
+
+    public function test_tampered_image_path_is_rejected_on_edit(): void
+    {
+        // 守護 AppServiceProvider 的全域 preventFilePathTampering():把 image_path
+        // 竄改成非本 record 原路徑、也非新上傳的任意 disk 路徑,必須被驗證拒絕,
+        // 否則可透過 preview/儲存讀取或掛上 disk 上任何物件。
+        $originalPath = 'wordwall-categories/mine.png';
+        $category = WordwallCategory::factory()->create(['image_path' => $originalPath]);
+        Storage::disk('s3')->put($originalPath, 'mine-bytes');
+        Storage::disk('s3')->put('other-dir/target.png', 'target-bytes');
+
+        Livewire::test(ManageWordwallCategories::class)
+            ->callAction(
+                TestAction::make(EditAction::class)->table($category),
+                data: ['image_path' => ['other-dir/target.png']],
+            )
+            ->assertHasActionErrors(['image_path']);
+
+        $this->assertDatabaseHas('wordwall_categories', [
+            'id' => $category->id,
+            'image_path' => $originalPath,
+        ]);
+    }
 }
