@@ -72,6 +72,11 @@ vendor/bin/sail artisan tinker --execute 'App\Models\User::create(["name"=>"Admi
 | `vendor/bin/sail artisan licensing:keys:issue-signing --days=3650` | 由根金鑰簽發一把有效期 10 年的 signing key，activate / validate 會挑選目前 active 的 signing key 來簽 PASETO。套件硬編碼預設為 30 天，這裡明確指定以免頻繁重簽 |
 | `vendor/bin/sail artisan licensing:keys:list`（選） | 驗證用：列出目前所有金鑰與狀態，確認 root 與 signing key 均 active |
 
+> **Laravel Cloud 部署、金鑰架構、把 root 公鑰交給 App 內嵌、輪替與備份**：
+> 見 [`docs/licensing-keys.md`](licensing-keys.md)。⚠️ Laravel Cloud 等臨時檔案
+> 系統**必須**用 `database` keystore（本專案 `config/licensing.php` 已預設），
+> 否則 redeploy 會清掉 root 私鑰。
+
 ---
 
 ## 5. 素材加密金鑰（CEK）

@@ -77,8 +77,12 @@ return [
     'crypto' => [
         'algorithm' => 'ed25519', // ed25519 | ES256
         'keystore' => [
-            'driver' => 'files', // files | database | custom
-            'path' => storage_path('app/licensing/keys'),
+            // database：加密後的私鑰存入 licensing_keys.private_key_encrypted 欄位，
+            // 交由受管資料庫持久化。**Laravel Cloud 等臨時檔案系統必須用 database**——
+            // 'files' 會把 root 私鑰寫進 storage/（redeploy 即清空），導致金鑰遺失、
+            // 全裝置需重新啟用且 App 內嵌的 root 公鑰失配。詳見 docs/licensing-keys.md。
+            'driver' => 'database', // files | database | custom
+            'path' => storage_path('app/licensing/keys'), // 僅 files driver 使用
             'passphrase' => env('LICENSING_KEY_PASSPHRASE'),
         ],
     ],
