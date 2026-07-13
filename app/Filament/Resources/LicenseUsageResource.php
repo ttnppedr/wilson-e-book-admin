@@ -19,7 +19,8 @@ use LucaLongo\LaravelLicensingFilamentManager\Filament\Resources\LicenseUsageRes
 /**
  * MVP 精簡版 LicenseUsageResource。
  * 隱藏新增按鈕、狀態欄位。只能編輯名稱，其餘唯讀。
- * 授權金鑰以大寫顯示，每 5 字元加 dash。
+ * 授權金鑰僅在檢視/編輯頁解密顯示（每 5 字元加 dash）；
+ * 列表顯示 license uid，避免逐列解密（表格有 60s poll 放大 CPU 成本）。
  */
 class LicenseUsageResource extends BaseLicenseUsageResource
 {
@@ -122,14 +123,6 @@ class LicenseUsageResource extends BaseLicenseUsageResource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('license.uid')
                     ->label('授權碼')
-                    ->formatStateUsing(function ($state, LicenseUsage $record) {
-                        $key = $record->license?->retrieveKey();
-                        if (! $key) {
-                            return $state ?? '—';
-                        }
-
-                        return LicenseKeyGenerator::format($key);
-                    })
                     ->copyable()
                     ->sortable(),
                 ...static::usageColumns(),

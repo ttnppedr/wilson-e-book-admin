@@ -33,4 +33,14 @@ class LicenseUsage extends BaseLicenseUsage implements Auditable
     protected $auditExclude = [
         'last_seen_at',
     ];
+
+    /**
+     * meta 內含 validate API 回寫的 client_data（裝置端自報的任意資料），
+     * 不可隨 Filament/Livewire 序列化下發到後台前端。
+     *
+     * @var array<int, string>
+     */
+    protected $hidden = [
+        'meta',
+    ];
 }

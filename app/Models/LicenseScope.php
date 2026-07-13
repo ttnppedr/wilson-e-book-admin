@@ -30,6 +30,16 @@ class LicenseScope extends BaseLicenseScope implements Auditable
         'meta',
     ];
 
+    /**
+     * meta 為自由格式欄位，後台表單未使用，
+     * 不隨 Filament/Livewire 序列化下發到前端。
+     *
+     * @var array<int, string>
+     */
+    protected $hidden = [
+        'meta',
+    ];
+
     protected static function booted(): void
     {
         parent::booted();
