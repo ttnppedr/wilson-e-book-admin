@@ -32,7 +32,7 @@ class LicenseController extends BaseLicenseController
      *    metadata 注入 PASETO extra_claims 的邏輯。升級
      *    masterix21/laravel-licensing 時，務必重新對齊 parent::activate() 的
      *    最新版本。
-     *    對齊版本：vendor 2.1.1
+     *    對齊版本：vendor 2.2.1
      */
     public function activate(Request $request): JsonResponse
     {
@@ -176,7 +176,7 @@ class LicenseController extends BaseLicenseController
      * 單次 COUNT 補上兩個欄位（`available_seats` 演算法同 vendor
      * `License::getAvailableSeats()`）。
      *
-     * 對齊版本：vendor 2.1.1
+     * 對齊版本：vendor 2.2.1
      */
     protected function formatLicense(License $license, bool $includeUsageSummary = true): array
     {
@@ -200,7 +200,7 @@ class LicenseController extends BaseLicenseController
      * 輸入框等待 admin 恢復。透過子類別動態分派，activate 與 validate endpoint
      * （ValidateController extends LicenseController）都會套用此覆寫版本。
      *
-     * 對齊版本：vendor 2.1.1
+     * 對齊版本：vendor 2.2.1
      */
     protected function guardLicenseState(License $license): ?JsonResponse
     {
@@ -228,7 +228,7 @@ class LicenseController extends BaseLicenseController
      *
      * vendor 的 findActiveSigning() 預設用 forScope(null) 只找無 scope 的 key，
      * 但本專案的 signing key 綁定 scope，需忽略 scope 限制查找。
-     * 對齊版本：vendor 2.1.1 — 改用 certificateAuthority->getRootPublicKey()。
+     * 對齊版本：vendor 2.2.1 — 改用 certificateAuthority->getRootPublicKey()。
      */
     protected function buildPublicKeyBundle(): ?array
     {

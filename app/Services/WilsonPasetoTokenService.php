@@ -23,7 +23,7 @@ use ParagonIE\Paseto\Protocol\Version4;
  *   邏輯並插入 extra claim 合併」的策略。
  *
  * ⚠️ 升級 masterix21/laravel-licensing 時務必重新對齊 parent::issue()。
- *    對齊版本：vendor 2.1.1
+ *    對齊版本：vendor 2.2.1
  *    唯一差異在下方 `$claims = ...` 後方的 extra_claims 合併區塊。
  *    （signing key 建構已對齊 vendor 2.0.1 起的 seed-derived 寫法 buildSecretKey()。）
  *
