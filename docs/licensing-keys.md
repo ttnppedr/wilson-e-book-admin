@@ -56,9 +56,13 @@ root）。對 B2B 授權是災難。故本專案預設已改為 `database`。
 
 ## 3. Laravel Cloud 部署步驟
 
+> 完整的 Laravel Cloud 部署流程（基礎設施、build／deploy 指令、排程開關、
+> 驗收清單）見 [`docs/deployment.md` 第 9 節](deployment.md)。本節只聚焦金鑰部分。
+
 ### 3.1 設定環境變數（Laravel Cloud 後台 → Environment）
 
-於 Laravel Cloud 的環境變數介面設定（**不要**寫進部署的 `.env` 檔，該檔會被覆蓋）：
+於 Laravel Cloud 的環境變數介面設定（**不要**寫進部署的 `.env` 檔，Cloud 的檔案系統
+是 ephemeral，該檔會被覆蓋且不跨部署保留）：
 
 | 變數 | 說明 |
 | --- | --- |
@@ -67,22 +71,29 @@ root）。對 B2B 授權是災難。故本專案預設已改為 `database`。
 | `LICENSING_KEY_SALT`（選） | 若要與 `APP_KEY` 解耦可顯式設定；設了就別再變。 |
 | `LICENSING_TOKEN_ISSUER` | 預設 `wilson-ebook-admin`，須與 App 端 `LicenseConstants.expectedIssuer` 一致。 |
 
-產生 passphrase（本機或 Cloud console 皆可，`--show` 只印不寫檔）：
+產生 passphrase（**在本機執行**，`--show` 只印不寫檔——Cloud 上寫入 `.env` 沒有意義，
+下次部署即消失）：
 
 ```bash
 php artisan licensing-passphrase:generate --show
 ```
 
+把輸出的值貼進 Cloud 環境變數面板，並**立即另存密碼管理器**。變更環境變數後需要
+重新部署才生效。
+
 ### 3.2 一次性建立金鑰（DB 與 passphrase 就緒後）
 
-於 Laravel Cloud 的 command runner / console 執行：
+於 Laravel Cloud 環境的 **Commands 分頁**執行（指令必須非互動）：
 
 ```bash
-php artisan migrate                               # 確保 licensing_keys 表存在
-php artisan licensing:keys:make-root              # 產 root 金鑰對（私鑰加密進 DB）
+php artisan migrate --force                       # 確保 licensing_keys 表存在；--force 避免互動確認提示
+php artisan licensing:keys:make-root              # 產 root 金鑰對（私鑰加密進 licensing_keys.private_key_encrypted）
 php artisan licensing:keys:issue-signing --days=3650   # 由 root 簽發 10 年期 signing key
 php artisan licensing:keys:list                   # 確認 root 與 signing 均 active
 ```
+
+> 若 `migrate --force` 已寫在環境的 deploy commands（建議做法，見
+> [`deployment.md` 第 9.4 節](deployment.md)），這裡就不必重跑。
 
 > `make-root` **每個環境只跑一次**。重跑會產生新 root，導致 App 內嵌公鑰失配。
 
