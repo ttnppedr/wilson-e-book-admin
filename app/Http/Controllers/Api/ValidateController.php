@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 
 class ValidateController extends LicenseController
 {
@@ -17,9 +18,6 @@ class ValidateController extends LicenseController
         'device_name',
         'os_version',
     ];
-
-    /** `data` 最多幾個鍵 */
-    private const CLIENT_DATA_MAX_KEYS = 10;
 
     /** `data` 單一值的最大字元數 */
     private const CLIENT_DATA_MAX_VALUE_LENGTH = 255;
@@ -40,15 +38,15 @@ class ValidateController extends LicenseController
             // 沒有 schema 時，持合法 token 者可反覆 POST 不同鍵名的大 JSON
             // （php.ini post_max_size=100M）把單列撐爆。因此限制鍵名白名單、
             // 鍵數與值長度。App 端目前不送此欄位，保留純為向後相容。
-            'data' => ['nullable', 'array', 'max:'.self::CLIENT_DATA_MAX_KEYS],
+            //
+            // 鍵數上限直接由白名單長度推導：過濾後本來就不可能超過白名單大小，
+            // 另立一個較大的魔術數字只會讓「實際上限是多少」需要讀三處才能推出。
+            'data' => ['nullable', 'array', 'max:'.count(self::CLIENT_DATA_ALLOWED_KEYS)],
             'data.*' => ['nullable', 'string', 'max:'.self::CLIENT_DATA_MAX_VALUE_LENGTH],
         ]);
 
         if (isset($payload['data'])) {
-            $payload['data'] = array_intersect_key(
-                $payload['data'],
-                array_flip(self::CLIENT_DATA_ALLOWED_KEYS),
-            );
+            $payload['data'] = Arr::only($payload['data'], self::CLIENT_DATA_ALLOWED_KEYS);
         }
 
         $license = $this->findLicense($payload['license_key']);

@@ -21,15 +21,6 @@ uses(RefreshDatabase::class);
 $activateUrl = '/api/licensing/v1/activate';
 
 /**
- * 產生一組合法的 X25519 client ephemeral public key（base64 字串）。
- */
-$freshClientPublicKeyB64 = function (): string {
-    $kp = sodium_crypto_box_keypair();
-
-    return base64_encode(sodium_crypto_box_publickey($kp));
-};
-
-/**
  * Mock `api` log channel 並期望收到一次 `error` 呼叫，context 中的
  * `internal_code` 等於指定值。
  *
@@ -95,18 +86,18 @@ test('activate rejects when ephemeral public key has wrong length', function () 
     $response->assertJsonPath('error.code', 'INVALID_EPHEMERAL_KEY');
 });
 
-test('activate rejects unknown license key', function () use ($activateUrl, $freshClientPublicKeyB64): void {
+test('activate rejects unknown license key', function () use ($activateUrl): void {
     $response = $this->postJson($activateUrl, [
         'license_key' => 'NONEXISTENT-LICENSE-KEY-XYZ',
         'fingerprint' => 'test-fp',
-        'client_ephemeral_public_key' => $freshClientPublicKeyB64(),
+        'client_ephemeral_public_key' => freshClientPublicKeyB64(),
     ]);
 
     $response->assertStatus(404);
     $response->assertJsonPath('error.code', 'INVALID_KEY');
 });
 
-test('activate rejects license without content key', function () use ($activateUrl, $freshClientPublicKeyB64, $expectServerErrorLogged): void {
+test('activate rejects license without content key', function () use ($activateUrl, $expectServerErrorLogged): void {
     // Response 已被遮蔽成 generic SERVER_ERROR，改用 log assertion 驗證 internal_code
     $expectServerErrorLogged('MISSING_CONTENT_KEY');
 
@@ -124,7 +115,7 @@ test('activate rejects license without content key', function () use ($activateU
     $response = $this->postJson($activateUrl, [
         'license_key' => $licenseKey,
         'fingerprint' => 'test-fp',
-        'client_ephemeral_public_key' => $freshClientPublicKeyB64(),
+        'client_ephemeral_public_key' => freshClientPublicKeyB64(),
     ]);
 
     $response->assertStatus(500);
@@ -132,7 +123,7 @@ test('activate rejects license without content key', function () use ($activateU
     $response->assertJsonPath('error.message', 'Server error');
 });
 
-test('activate rejects license with malformed content key', function () use ($activateUrl, $freshClientPublicKeyB64, $expectServerErrorLogged): void {
+test('activate rejects license with malformed content key', function () use ($activateUrl, $expectServerErrorLogged): void {
     $expectServerErrorLogged('MISSING_CONTENT_KEY');
 
     // meta['content_key'] 存在但不是 32 bytes base64
@@ -149,7 +140,7 @@ test('activate rejects license with malformed content key', function () use ($ac
     $response = $this->postJson($activateUrl, [
         'license_key' => $licenseKey,
         'fingerprint' => 'test-fp',
-        'client_ephemeral_public_key' => $freshClientPublicKeyB64(),
+        'client_ephemeral_public_key' => freshClientPublicKeyB64(),
     ]);
 
     $response->assertStatus(500);
@@ -169,7 +160,7 @@ test('activate rejects license with malformed content key', function () use ($ac
  *   - 改從 `api` log channel 驗證 `internal_code === 'MISSING_CONTENT_KEY'`，
  *     證明請求確實穿過 TOKEN_REQUIRED 前置檢查進到 extractRawContentKey 階段
  */
-test('activate does not reject license with null expires at', function () use ($activateUrl, $freshClientPublicKeyB64, $expectServerErrorLogged): void {
+test('activate does not reject license with null expires at', function () use ($activateUrl, $expectServerErrorLogged): void {
     $expectServerErrorLogged('MISSING_CONTENT_KEY');
 
     $licenseKey = 'TESTKEY'.bin2hex(random_bytes(6));
@@ -185,7 +176,7 @@ test('activate does not reject license with null expires at', function () use ($
     $response = $this->postJson($activateUrl, [
         'license_key' => $licenseKey,
         'fingerprint' => 'test-fp',
-        'client_ephemeral_public_key' => $freshClientPublicKeyB64(),
+        'client_ephemeral_public_key' => freshClientPublicKeyB64(),
     ]);
 
     $response->assertStatus(500);

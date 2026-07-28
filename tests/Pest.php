@@ -22,3 +22,24 @@ use Tests\TestCase;
 */
 
 pest()->extend(TestCase::class)->in('Feature');
+
+/*
+|--------------------------------------------------------------------------
+| Functions
+|--------------------------------------------------------------------------
+|
+| 跨測試檔共用的 helper。只放「多個檔案都需要、且與單一測試主題無關」的東西；
+| 單一檔案內部使用的 helper 留在該檔的檔案級 closure。
+|
+*/
+
+/**
+ * 產生一組全新的 X25519 client ephemeral public key（base64）。
+ *
+ * activate 端點要求 client 送出合法的 32 bytes X25519 公鑰，否則會在
+ * INVALID_EPHEMERAL_KEY 前置檢查就被擋下、進不到要測的業務邏輯。
+ */
+function freshClientPublicKeyB64(): string
+{
+    return base64_encode(sodium_crypto_box_publickey(sodium_crypto_box_keypair()));
+}

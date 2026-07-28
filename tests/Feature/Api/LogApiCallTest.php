@@ -14,12 +14,12 @@
 use App\Models\License;
 use App\Models\LicenseUsage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Artisan;
 use LucaLongo\Licensing\Enums\LicenseStatus;
 use LucaLongo\Licensing\Enums\UsageStatus;
+use Tests\Concerns\CreatesLicensingKeys;
 use Tests\Concerns\MocksLicenseTokenVerifier;
 
-uses(MocksLicenseTokenVerifier::class, RefreshDatabase::class);
+uses(CreatesLicensingKeys::class, MocksLicenseTokenVerifier::class, RefreshDatabase::class);
 
 beforeEach(function (): void {
     $this->logPath = storage_path('logs/testing-api-'.getmypid().'.log');
@@ -100,12 +100,7 @@ test('error response body is still logged', function () use ($lastLogEntry): voi
 
 test('non get success response body is still logged', function () use ($lastLogEntry): void {
     // validate 成功時會真實簽發驗證收據 token，需要 root/signing key
-    config([
-        'licensing.crypto.keystore.driver' => 'database',
-        'licensing.crypto.keystore.passphrase' => 'log-api-call-test-passphrase',
-    ]);
-    Artisan::call('licensing:keys:make-root');
-    Artisan::call('licensing:keys:issue-signing', ['--days' => 365]);
+    $this->createLicensingKeys('log-api-call-test-passphrase');
 
     $licenseKey = 'LOGTEST'.bin2hex(random_bytes(6));
     $license = License::create([

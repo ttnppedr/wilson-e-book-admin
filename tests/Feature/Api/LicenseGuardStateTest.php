@@ -24,15 +24,6 @@ uses(MocksLicenseTokenVerifier::class, RefreshDatabase::class);
 $activateUrl = '/api/licensing/v1/activate';
 
 /**
- * 產生一組合法的 X25519 client ephemeral public key（base64 字串）。
- */
-$freshClientPublicKeyB64 = function (): string {
-    $kp = sodium_crypto_box_keypair();
-
-    return base64_encode(sodium_crypto_box_publickey($kp));
-};
-
-/**
  * 建立一個指定狀態的 license row（不透過 activate 流程）。
  */
 $makeLicense = function (LicenseStatus $status, ?DateTimeInterface $expiresAt = null): string {
@@ -130,26 +121,26 @@ test('validate rejects legacy grace license', function () use ($makeLicense): vo
 // activate endpoint
 // -------------------------------------------------------------------------
 
-test('activate returns cancelled license for cancelled status', function () use ($makeLicense, $freshClientPublicKeyB64, $activateUrl): void {
+test('activate returns cancelled license for cancelled status', function () use ($makeLicense, $activateUrl): void {
     $licenseKey = $makeLicense(LicenseStatus::Cancelled);
 
     $response = $this->postJson($activateUrl, [
         'license_key' => $licenseKey,
         'fingerprint' => 'test-fp',
-        'client_ephemeral_public_key' => $freshClientPublicKeyB64(),
+        'client_ephemeral_public_key' => freshClientPublicKeyB64(),
     ]);
 
     $response->assertStatus(410);
     $response->assertJsonPath('error.code', 'CANCELLED_LICENSE');
 });
 
-test('activate returns suspended license for suspended status', function () use ($makeLicense, $freshClientPublicKeyB64, $activateUrl): void {
+test('activate returns suspended license for suspended status', function () use ($makeLicense, $activateUrl): void {
     $licenseKey = $makeLicense(LicenseStatus::Suspended);
 
     $response = $this->postJson($activateUrl, [
         'license_key' => $licenseKey,
         'fingerprint' => 'test-fp',
-        'client_ephemeral_public_key' => $freshClientPublicKeyB64(),
+        'client_ephemeral_public_key' => freshClientPublicKeyB64(),
     ]);
 
     $response->assertStatus(423);

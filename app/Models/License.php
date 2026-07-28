@@ -55,6 +55,20 @@ class License extends BaseLicense implements Auditable
     }
 
     /**
+     * 會被 `expires_at` 推動轉為 Expired 的狀態。
+     *
+     * Suspended/Cancelled/Pending 刻意排除：那是管理者的明確決定，不該因為
+     * expires_at 過了就被改寫。Grace 納入僅為收斂舊資料（新流程不再產生）。
+     *
+     * 定義在此是為了讓 CheckLicenseExpirationsCommand 的 whereIn 與下方
+     * transitionToExpired() 的 in_array 同源——同一條產品規則若各寫一次，
+     * 日後新增狀態漏改其一只會導致該批 row 靜默不被掃到，不會報錯。
+     *
+     * @var list<LicenseStatus>
+     */
+    public const EXPIRABLE_STATUSES = [LicenseStatus::Active, LicenseStatus::Grace];
+
+    /**
      * 覆寫 vendor transitionToExpired()：允許 Active 直接轉 Expired。
      *
      * vendor 原版要求 `isInGracePeriod() && gracePeriodExpired()`，也就是**只能**
@@ -67,7 +81,7 @@ class License extends BaseLicense implements Auditable
      */
     public function transitionToExpired(): self
     {
-        if (! in_array($this->status, [LicenseStatus::Active, LicenseStatus::Grace], true)) {
+        if (! in_array($this->status, self::EXPIRABLE_STATUSES, true)) {
             return $this;
         }
 

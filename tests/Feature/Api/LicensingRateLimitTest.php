@@ -20,7 +20,6 @@ use Tests\Concerns\MocksLicenseTokenVerifier;
 uses(MocksLicenseTokenVerifier::class, RefreshDatabase::class);
 
 $activateUrl = '/api/licensing/v1/activate';
-$validateUrl = '/api/licensing/v1/validate';
 
 /**
  * 每個測試前清一次 cache,避免 rate limit 計數被前一個測試用掉的名額污染。
@@ -28,15 +27,6 @@ $validateUrl = '/api/licensing/v1/validate';
 beforeEach(function (): void {
     Cache::flush();
 });
-
-/**
- * 產生一組合法的 X25519 public key (base64)。讓 activate 至少能通過
- * `INVALID_EPHEMERAL_KEY` 前置檢查,進到業務層 (會因為 license 不存在回 404)。
- * 本測試只關心 rate limit,不關心具體業務錯誤碼。
- */
-$freshClientPublicKeyB64 = function (): string {
-    return base64_encode(sodium_crypto_box_publickey(sodium_crypto_box_keypair()));
-};
 
 /**
  * 建立一個 active license,只用於 validate rate limit 測試
@@ -56,11 +46,11 @@ $makeActiveLicense = function (): string {
     return $licenseKey;
 };
 
-test('activate blocks after 10 requests per minute', function () use ($activateUrl, $freshClientPublicKeyB64): void {
+test('activate blocks after 10 requests per minute', function () use ($activateUrl): void {
     $body = [
         'license_key' => 'NONEXISTENT-KEY',
         'fingerprint' => 'rate-fp-activate',
-        'client_ephemeral_public_key' => $freshClientPublicKeyB64(),
+        'client_ephemeral_public_key' => freshClientPublicKeyB64(),
     ];
 
     // 前 10 次應通過 throttle(會因為 license 不存在收到 404,但 429 絕對不該出現)
@@ -108,11 +98,11 @@ test('validate blocks after 60 requests per minute', function () use ($makeActiv
     $response->assertJsonPath('error.code', 'RATE_LIMITED');
 });
 
-test('activate rate limit is keyed by fingerprint', function () use ($activateUrl, $freshClientPublicKeyB64): void {
+test('activate rate limit is keyed by fingerprint', function () use ($activateUrl): void {
     $body = [
         'license_key' => 'NONEXISTENT-KEY',
         'fingerprint' => 'fingerprint-A',
-        'client_ephemeral_public_key' => $freshClientPublicKeyB64(),
+        'client_ephemeral_public_key' => freshClientPublicKeyB64(),
     ];
 
     // 用 fingerprint-A 打滿 10 次

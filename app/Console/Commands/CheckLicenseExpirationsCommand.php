@@ -6,7 +6,6 @@ use App\Models\License;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
-use LucaLongo\Licensing\Enums\LicenseStatus;
 
 #[Signature('licensing:check-expirations')]
 #[Description('把 expires_at 已過的 License 轉為 expired（本專案無寬限期）。')]
@@ -26,8 +25,8 @@ class CheckLicenseExpirationsCommand extends Command
         $movedToExpired = 0;
 
         License::query()
-            // Grace 一併納入：舊資料可能仍殘留此狀態（新流程不再產生）。
-            ->whereIn('status', [LicenseStatus::Active, LicenseStatus::Grace])
+            // 與 License::transitionToExpired() 的 guard 同源，避免兩處分歧。
+            ->whereIn('status', License::EXPIRABLE_STATUSES)
             ->whereNotNull('expires_at')
             ->where('expires_at', '<', now())
             ->cursor()

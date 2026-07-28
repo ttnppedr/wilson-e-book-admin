@@ -13,24 +13,19 @@ use App\Models\License;
 use App\Models\LicenseUsage;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use LucaLongo\Licensing\Enums\LicenseStatus;
 use LucaLongo\Licensing\Enums\UsageStatus;
+use Tests\Concerns\CreatesLicensingKeys;
 use Tests\Concerns\MocksLicenseTokenVerifier;
 
-uses(MocksLicenseTokenVerifier::class, RefreshDatabase::class);
+uses(CreatesLicensingKeys::class, MocksLicenseTokenVerifier::class, RefreshDatabase::class);
 
 beforeEach(function (): void {
     // validate 成功時會簽發驗證收據 token（真實走 WilsonPasetoTokenService），
     // 因此即使 bearer 驗證被 MocksLicenseTokenVerifier mock 掉，仍需要
     // 真實的 root/signing key 存在，否則 issueToken 會 500。
-    config([
-        'licensing.crypto.keystore.driver' => 'database',
-        'licensing.crypto.keystore.passphrase' => 'heartbeat-test-passphrase',
-    ]);
-    Artisan::call('licensing:keys:make-root');
-    Artisan::call('licensing:keys:issue-signing', ['--days' => 365]);
+    $this->createLicensingKeys('heartbeat-test-passphrase');
 });
 
 /**

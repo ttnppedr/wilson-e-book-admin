@@ -35,18 +35,16 @@ use LucaLongo\Licensing\Models\LicensingKey;
 use ParagonIE\Paseto\Keys\AsymmetricPublicKey;
 use ParagonIE\Paseto\Parser;
 use ParagonIE\Paseto\Protocol\Version4;
+use Tests\Concerns\CreatesLicensingKeys;
 
-uses(RefreshDatabase::class);
+uses(CreatesLicensingKeys::class, RefreshDatabase::class);
 
 beforeEach(function (): void {
     config([
-        'licensing.crypto.keystore.driver' => 'database',
-        'licensing.crypto.keystore.passphrase' => 'paseto-issuance-test-passphrase',
         'licensing.publishing.public_bundle_path' => storage_path('framework/testing/licensing-public-bundle.json'),
     ]);
 
-    $this->assertSame(0, Artisan::call('licensing:keys:make-root'), 'make-root should succeed');
-    $this->assertSame(0, Artisan::call('licensing:keys:issue-signing', ['--days' => 365]), 'issue-signing should succeed');
+    $this->createLicensingKeys('paseto-issuance-test-passphrase');
 });
 
 $activeSigningKey = function (): LicensingKey {
