@@ -104,6 +104,42 @@ class LicenseGuardStateTest extends TestCase
         $response->assertJsonPath('error.code', 'EXPIRED_LICENSE');
     }
 
+    /**
+     * 產品決策：無寬限期。status 仍是 active、但 expires_at 已過的授權
+     * （每日排程尚未跑過）必須**當下**就被拒，不能等到 status 被改寫。
+     */
+    public function test_validate_rejects_active_license_whose_expires_at_has_passed(): void
+    {
+        $licenseKey = $this->makeLicense(LicenseStatus::Active, now()->subMinute());
+        $this->acceptAnyTokenFor($licenseKey, 'test-fp');
+
+        $response = $this->postValidateWithToken([
+            'license_key' => $licenseKey,
+            'fingerprint' => 'test-fp',
+        ]);
+
+        $response->assertStatus(410);
+        $response->assertJsonPath('error.code', 'EXPIRED_LICENSE');
+    }
+
+    /**
+     * 舊資料殘留的 grace 授權一律拒絕——vendor 的 LicenseStatus::isUsable()
+     * 仍把 Grace 算成可用，本專案不接受。
+     */
+    public function test_validate_rejects_legacy_grace_license(): void
+    {
+        $licenseKey = $this->makeLicense(LicenseStatus::Grace, now()->subDay());
+        $this->acceptAnyTokenFor($licenseKey, 'test-fp');
+
+        $response = $this->postValidateWithToken([
+            'license_key' => $licenseKey,
+            'fingerprint' => 'test-fp',
+        ]);
+
+        $response->assertStatus(410);
+        $response->assertJsonPath('error.code', 'EXPIRED_LICENSE');
+    }
+
     // -------------------------------------------------------------------------
     // activate endpoint
     // -------------------------------------------------------------------------

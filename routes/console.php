@@ -9,9 +9,11 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 /*
- * 授權排程：每日把 expires_at 已過的 License 由 active 推入 grace，
- * 再把 grace 期滿的推入 expired。執行時間由 config/licensing.php 的
- * scheduler.check_expirations 控制，關閉時整段跳過不註冊。
+ * 授權排程：每日把 expires_at 已過的 License 直接推入 expired（本專案無寬限
+ * 期）。API 的到期判斷不依賴這支——guardLicenseState() 直接看 expires_at，
+ * 授權在到期當下即被拒；排程只負責讓 DB 的 status 與事實一致。
+ * 執行時間由 config/licensing.php 的 scheduler.check_expirations 控制，
+ * 關閉時整段跳過不註冊。
  *
  * onOneServer() 確保多台 worker 時只有一台執行，withoutOverlapping()
  * 避免前次執行尚未結束時重複啟動。

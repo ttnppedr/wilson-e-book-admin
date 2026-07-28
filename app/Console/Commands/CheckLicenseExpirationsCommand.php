@@ -9,29 +9,27 @@ use Illuminate\Console\Command;
 use LucaLongo\Licensing\Enums\LicenseStatus;
 
 #[Signature('licensing:check-expirations')]
-#[Description('把 expires_at 已過的 active License 轉為 grace；grace 期滿再轉為 expired。')]
+#[Description('把 expires_at 已過的 License 轉為 expired（本專案無寬限期）。')]
 class CheckLicenseExpirationsCommand extends Command
 {
+    /**
+     * 產品決策：**無寬限期，到期即失效**。原本是 active → grace →（14 天後）
+     * expired 兩段式，現在一步到位。
+     *
+     * 注意：API 的到期判斷**不依賴這支指令**——guardLicenseState() 直接看
+     * `expires_at`（`License::isExpired()` 是純日期判斷），授權在到期當下就會
+     * 被拒絕，不必等隔天 02:00 的排程。這支的作用是讓 DB 的 status 欄位與事實
+     * 一致（後台顯示、統計、LicenseExpired 事件）。
+     */
     public function handle(): int
     {
-        $movedToGrace = 0;
         $movedToExpired = 0;
 
         License::query()
-            ->where('status', LicenseStatus::Active)
+            // Grace 一併納入：舊資料可能仍殘留此狀態（新流程不再產生）。
+            ->whereIn('status', [LicenseStatus::Active, LicenseStatus::Grace])
             ->whereNotNull('expires_at')
             ->where('expires_at', '<', now())
-            ->cursor()
-            ->each(function (License $license) use (&$movedToGrace): void {
-                $license->transitionToGrace();
-
-                if ($license->wasChanged('status')) {
-                    $movedToGrace++;
-                }
-            });
-
-        License::query()
-            ->where('status', LicenseStatus::Grace)
             ->cursor()
             ->each(function (License $license) use (&$movedToExpired): void {
                 $license->transitionToExpired();
@@ -41,7 +39,7 @@ class CheckLicenseExpirationsCommand extends Command
                 }
             });
 
-        $this->info("轉入 grace: {$movedToGrace}；轉入 expired: {$movedToExpired}");
+        $this->info("轉入 expired: {$movedToExpired}");
 
         return self::SUCCESS;
     }

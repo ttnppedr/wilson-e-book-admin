@@ -19,10 +19,8 @@ class LicenseStatsOverview extends StatsOverviewWidget
 
         $totalLicenses = $licenseModel::count();
         $activeLicenses = $licenseModel::query()
-            ->whereIn('status', [
-                LicenseStatus::Active,
-                LicenseStatus::Grace,
-            ])
+            // 不含 Grace：產品決策為無寬限期，License 不再進入該狀態。
+            ->where('status', LicenseStatus::Active)
             ->where(function ($query) {
                 $query
                     ->whereNull('expires_at')

@@ -40,7 +40,11 @@ return [
 
     'policies' => [
         'over_limit' => 'reject', // reject | auto_replace_oldest
-        'grace_days' => 14,
+        // 產品決策：無寬限期，授權到期即失效。0 讓 vendor 內任何殘留的
+        // grace 計算（gracePeriodExpired() 等）都立即為真。真正的把關在
+        // App\Models\License::transitionToGrace()（no-op）與
+        // LicenseController::guardLicenseState()（到期即 410）。
+        'grace_days' => 0,
         'usage_inactivity_auto_revoke_days' => null, // null to disable
         'unique_usage_scope' => 'license', // license | global
     ],

@@ -223,11 +223,19 @@ class LicenseController extends BaseLicenseController
             return $this->error('SUSPENDED_LICENSE', 'License is suspended', 423);
         }
 
-        if ($license->isExpired() && ! $license->isInGracePeriod()) {
+        // 產品決策：**無寬限期，到期即失效**。原本的 `&& ! isInGracePeriod()`
+        // 讓 grace 授權繼續拿得到 token 與 content key；現在一律拒絕。
+        //
+        // `isExpired()` 是純日期判斷（expires_at 已過），因此**不依賴每日排程**
+        // ——授權在到期當下就會被拒，不必等 licensing:check-expirations 跑過。
+        if ($license->isExpired()) {
             return $this->error('EXPIRED_LICENSE', 'License is expired', 410);
         }
 
-        if (! $license->isUsable()) {
+        // vendor 的 LicenseStatus::isUsable() 仍把 Grace 算成可用（enum 在
+        // vendor，改不了）。本專案不接受 grace，故顯式擋掉——上面的日期檢查
+        // 理論上已涵蓋（grace ⇒ 必已過期），這是不依賴該蘊含關係的第二道。
+        if ($license->status === LicenseStatus::Grace || ! $license->isUsable()) {
             return $this->error('LICENSE_NOT_ACTIVE', 'License is not active', 403);
         }
 

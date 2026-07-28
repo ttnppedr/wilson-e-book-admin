@@ -34,8 +34,10 @@ class CheckLicenseExpirationsCommandTest extends TestCase
         ]);
     }
 
-    public function test_active_license_past_expires_at_transitions_to_grace(): void
+    public function test_active_license_past_expires_at_transitions_directly_to_expired(): void
     {
+        Event::fake([LicenseExpired::class]);
+
         $license = $this->makeLicense([
             'status' => LicenseStatus::Active,
             'activated_at' => now()->subDays(100),
@@ -44,28 +46,44 @@ class CheckLicenseExpirationsCommandTest extends TestCase
 
         $this->artisan('licensing:check-expirations')->assertSuccessful();
 
-        $this->assertSame(LicenseStatus::Grace, $license->refresh()->status);
-    }
-
-    public function test_grace_license_past_grace_window_transitions_to_expired_and_fires_event(): void
-    {
-        Event::fake([LicenseExpired::class]);
-
-        $graceDays = (int) config('licensing.policies.grace_days');
-
-        $license = $this->makeLicense([
-            'status' => LicenseStatus::Grace,
-            'activated_at' => now()->subDays(200),
-            'expires_at' => now()->subDays($graceDays + 2),
-        ]);
-
-        $this->artisan('licensing:check-expirations')->assertSuccessful();
-
+        // 產品決策：無寬限期。不再經過 grace 中繼站。
         $this->assertSame(LicenseStatus::Expired, $license->refresh()->status);
         Event::assertDispatched(
             LicenseExpired::class,
             fn (LicenseExpired $event) => $event->license->is($license),
         );
+    }
+
+    public function test_license_never_enters_grace_status(): void
+    {
+        $license = $this->makeLicense([
+            'status' => LicenseStatus::Active,
+            'activated_at' => now()->subDays(100),
+            'expires_at' => now()->subDay(),
+        ]);
+
+        // 直接呼叫也不得進入 Grace——覆寫在 model 層，vendor 自己的
+        // CheckExpirationsCommand 呼叫這支時同樣走不進去。
+        $license->transitionToGrace();
+
+        $this->assertSame(LicenseStatus::Active, $license->refresh()->status);
+    }
+
+    public function test_legacy_grace_license_is_drained_to_expired(): void
+    {
+        Event::fake([LicenseExpired::class]);
+
+        // 舊流程殘留的 grace 資料：不論當初的寬限窗多長，一律收斂為 expired。
+        $license = $this->makeLicense([
+            'status' => LicenseStatus::Grace,
+            'activated_at' => now()->subDays(200),
+            'expires_at' => now()->subDay(),
+        ]);
+
+        $this->artisan('licensing:check-expirations')->assertSuccessful();
+
+        $this->assertSame(LicenseStatus::Expired, $license->refresh()->status);
+        Event::assertDispatched(LicenseExpired::class);
     }
 
     public function test_active_license_not_yet_expired_is_untouched(): void
@@ -81,20 +99,6 @@ class CheckLicenseExpirationsCommandTest extends TestCase
         $this->assertSame(LicenseStatus::Active, $license->refresh()->status);
     }
 
-    public function test_grace_license_still_within_grace_window_is_untouched(): void
-    {
-        $graceDays = (int) config('licensing.policies.grace_days');
-
-        $license = $this->makeLicense([
-            'status' => LicenseStatus::Grace,
-            'activated_at' => now()->subDays(100),
-            'expires_at' => now()->subDays(max(1, $graceDays - 2)),
-        ]);
-
-        $this->artisan('licensing:check-expirations')->assertSuccessful();
-
-        $this->assertSame(LicenseStatus::Grace, $license->refresh()->status);
-    }
 
     public function test_suspended_license_with_past_expires_at_is_untouched(): void
     {
@@ -153,7 +157,7 @@ class CheckLicenseExpirationsCommandTest extends TestCase
             ->firstOrFail();
 
         $this->assertSame(LicenseStatus::Active->value, $audit->old_values['status']);
-        $this->assertSame(LicenseStatus::Grace->value, $audit->new_values['status']);
+        $this->assertSame(LicenseStatus::Expired->value, $audit->new_values['status']);
     }
 
     public function test_command_output_reports_transition_counts(): void
@@ -170,7 +174,7 @@ class CheckLicenseExpirationsCommandTest extends TestCase
         ]);
 
         $this->artisan('licensing:check-expirations')
-            ->expectsOutputToContain('轉入 grace: 2')
+            ->expectsOutputToContain('轉入 expired: 2')
             ->assertSuccessful();
     }
 

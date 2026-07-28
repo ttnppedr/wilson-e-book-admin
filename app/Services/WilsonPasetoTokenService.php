@@ -86,11 +86,10 @@ class WilsonPasetoTokenService extends PasetoTokenService
             $claims['license_expires_at'] = $license->expires_at->format('c');
         }
 
-        if ($license->isInGracePeriod()) {
-            $graceDays = $license->getGraceDays();
-            $graceUntil = $license->expires_at->addDays($graceDays);
-            $claims['grace_until'] = $graceUntil->format('c');
-        }
+        // 不簽 `grace_until`：產品決策為無寬限期，授權到期即失效。License 也
+        // 不再進入 Grace 狀態（見 App\Models\License::transitionToGrace()），
+        // 且 API 在 guardLicenseState() 就已擋下所有已到期授權，這段不可能成立。
+        // `grace_until` 仍保留在下方的保留字清單中，防止經 extra_claims 復活。
 
         // ============================================================
         // 唯一新增邏輯：合併 extra_claims（保護保留字不被覆蓋）
