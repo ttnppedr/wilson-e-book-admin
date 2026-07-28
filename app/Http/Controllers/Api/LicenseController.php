@@ -38,6 +38,20 @@ class LicenseController extends BaseLicenseController
     protected ?string $bundleSigningKid = null;
 
     /**
+     * activate 的 `metadata` 允許鍵名白名單。
+     *
+     * vendor 的 `UsageRegistrarService::contextValue()` 讓 **client 值優先於
+     * server 值**，所以未過濾的 metadata 可以覆寫 usage 的 `ip` 與
+     * `user_agent` —— 稽核軌跡因此可被偽造：攻擊者能把自己的啟用記錄標成
+     * 任意來源 IP。套件是相依、不能改，所以在呼叫 register() 之前就處理。
+     */
+    private const METADATA_ALLOWED_KEYS = [
+        'client_type',
+        'name',
+        'meta',
+    ];
+
+    /**
      * ⚠️ 此方法複製自 vendor LicenseController::activate()，在固定位置插入
      *    client ephemeral key 驗證、ECDH content key wrap、以及把 wrapped
      *    metadata 注入 PASETO extra_claims 的邏輯。升級
@@ -94,7 +108,15 @@ class LicenseController extends BaseLicenseController
             ]);
         }
 
-        $metadata = $payload['metadata'] ?? [];
+        // 只留白名單鍵，並強制由 server 決定 ip / user_agent（見
+        // METADATA_ALLOWED_KEYS 的說明——client 值原本會蓋掉 server 值）。
+        $metadata = array_intersect_key(
+            $payload['metadata'] ?? [],
+            array_flip(self::METADATA_ALLOWED_KEYS),
+        );
+        $metadata['ip'] = $request->ip();
+        $metadata['user_agent'] = $request->userAgent();
+
         try {
             $usage = $this->licensing->register($license, $payload['fingerprint'], $metadata);
         } catch (\RuntimeException $exception) {
