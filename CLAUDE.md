@@ -21,6 +21,7 @@ Wilson 電子書管理後台，基於 Laravel 13 + Filament v5 建構，整合 `
 - **時區**: 顯示用 `Asia/Taipei`（GMT+8），資料庫儲存為 UTC
 - **Docker**: Sail 使用自訂 Dockerfile（`docker/8.5/Dockerfile`），已加入 `php8.5-gmp` 擴充套件
 - **Pint**: 編輯 PHP 檔案後由 PostToolUse hook 自動逐檔格式化；手動整批格式化用 `vendor/bin/sail bin pint --dirty`
+- **測試**: 已安裝 Pest 5（`tests/Pest.php` 只把 `Tests\TestCase` 綁到 `Feature`；`Unit` 沿用純 `PHPUnit\Framework\TestCase`），但**現存 25 個測試檔全部是 PHPUnit class 語法**，由 Pest runner 執行。兩種語法可共存，不要為了統一風格而整批改寫既有測試——`AuditTargetResourceGuardrailTest`（`#[DataProvider]` + reflection）與 `AuditTargetStaticAnalysisTest`（php-parser AST）是有狀態的 class 型測試，改成 closure 只會更難讀。**Pest 5 把 `phpunit/phpunit` 釘死在 13.2.4**（`conflict: >13.2.4`），所以 PHPUnit 無法單獨升 patch，需連同 Pest 一起升
 - **排程與 CLI**: `licensing:check-expirations` 每日把過期 License 由 active→grace→expired（`routes/console.php`，受 `config/licensing.php` 的 `scheduler.check_expirations` 控制，`onOneServer`+`withoutOverlapping`）。另有 `content-key:create`/`content-key:list`、`licensing:passphrase-generate` 等 CLI。Wordwall 與 WordwallCategory（遊戲分類，name + 圖片；與 Wordwall 為 nullable 一對多，刪分類時遊戲 FK `nullOnDelete`）皆非 audit 對象（model + Filament resource + `v1/wordwalls`、`v1/wordwall-categories`、`v1/wordwall-categories/{id}/image` API），故可合法用 `reorderable('sort')`
 
 ## API 層
@@ -99,7 +100,8 @@ This application is a Laravel application and its main Laravel ecosystems packag
 - laravel/pail (PAIL) - v1
 - laravel/pint (PINT) - v1
 - laravel/sail (SAIL) - v1
-- phpunit/phpunit (PHPUNIT) - v12
+- pestphp/pest (PEST) - v5
+- phpunit/phpunit (PHPUNIT) - v13
 - tailwindcss (TAILWINDCSS) - v4
 
 ## Skills Activation
@@ -246,23 +248,14 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 - If you have modified any PHP files, you must run `vendor/bin/sail bin pint --dirty --format agent` before finalizing changes to ensure your code matches the project's expected style.
 - Do not run `vendor/bin/sail bin pint --test --format agent`, simply run `vendor/bin/sail bin pint --format agent` to fix any formatting issues.
 
-=== phpunit/core rules ===
+=== pest/core rules ===
 
-# PHPUnit
+## Pest
 
-- This application uses PHPUnit for testing. All tests must be written as PHPUnit classes. Use `vendor/bin/sail artisan make:test --phpunit {name}` to create a new test.
-- If you see a test using "Pest", convert it to PHPUnit.
-- Every time a test has been updated, run that singular test.
-- When the tests relating to your feature are passing, ask the user if they would like to also run the entire test suite to make sure everything is still passing.
-- Tests should cover all happy paths, failure paths, and edge cases.
-- You must not remove any tests or test files from the tests directory without approval. These are not temporary or helper files; these are core to the application.
-
-## Running Tests
-
-- Run the minimal number of tests, using an appropriate filter, before finalizing.
-- To run all tests: `vendor/bin/sail artisan test --compact`.
-- To run all tests in a file: `vendor/bin/sail artisan test --compact tests/Feature/ExampleTest.php`.
-- To filter on a particular test name: `vendor/bin/sail artisan test --compact --filter=testName` (recommended after making a change to a related file).
+- This project uses Pest for testing. Create tests: `vendor/bin/sail artisan make:test --pest {name}`.
+- The `{name}` argument should not include the test suite directory. Use `vendor/bin/sail artisan make:test --pest SomeFeatureTest` instead of `vendor/bin/sail artisan make:test --pest Feature/SomeFeatureTest`.
+- Run tests: `vendor/bin/sail artisan test --compact` or filter: `vendor/bin/sail artisan test --compact --filter=testName`.
+- Do NOT delete tests without approval.
 
 === filament/filament rules ===
 
