@@ -1,225 +1,203 @@
 <?php
 
-namespace Tests\Feature;
-
 use App\Models\License;
 use App\Models\LicenseScope;
 use App\Models\LicenseUsage;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use LucaLongo\Licensing\Enums\LicenseStatus;
 use LucaLongo\Licensing\Enums\UsageStatus;
 use OwenIt\Auditing\Models\Audit;
-use Tests\TestCase;
 
-class AuditingTest extends TestCase
-{
-    use RefreshDatabase;
+uses(RefreshDatabase::class);
 
-    private User $admin;
+beforeEach(function (): void {
+    $this->admin = User::factory()->create();
+    $this->actingAs($this->admin);
+});
 
-    protected function setUp(): void
-    {
-        parent::setUp();
+$makeScope = function (): LicenseScope {
+    return LicenseScope::create([
+        'name' => 'Test Scope',
+        'is_active' => true,
+        'default_max_usages' => 3,
+        'default_duration_days' => 365,
+    ]);
+};
 
-        $this->admin = User::factory()->create();
-        $this->actingAs($this->admin);
-    }
+$makeLicense = function (LicenseScope $scope): License {
+    return License::create([
+        'key_hash' => hash('sha256', fake()->uuid()),
+        'status' => LicenseStatus::Pending,
+        'license_scope_id' => $scope->getKey(),
+        'name' => 'Test License',
+        'expires_at' => now()->addDays(365),
+        'max_usages' => 3,
+        'meta' => [],
+    ]);
+};
 
-    public function test_creating_license_scope_writes_audit_record_with_actor(): void
-    {
-        $scope = LicenseScope::create([
-            'name' => 'Scope A',
-            'is_active' => true,
-            'default_max_usages' => 3,
-            'default_duration_days' => 365,
-        ]);
+$makeUsage = function (License $license): LicenseUsage {
+    return LicenseUsage::create([
+        'license_id' => $license->getKey(),
+        'usage_fingerprint' => fake()->uuid(),
+        'status' => UsageStatus::Active,
+        'registered_at' => now(),
+        'last_seen_at' => now(),
+        'client_type' => 'desktop',
+        'meta' => [],
+    ]);
+};
 
-        $audit = Audit::query()
-            ->where('auditable_type', $scope->getMorphClass())
-            ->where('auditable_id', $scope->getKey())
-            ->where('event', 'created')
-            ->firstOrFail();
+test('creating license scope writes audit record with actor', function (): void {
+    $scope = LicenseScope::create([
+        'name' => 'Scope A',
+        'is_active' => true,
+        'default_max_usages' => 3,
+        'default_duration_days' => 365,
+    ]);
 
-        $this->assertSame((string) $this->admin->getKey(), (string) $audit->user_id);
-        $this->assertSame($this->admin::class, $audit->user_type);
-        $this->assertSame('Scope A', $audit->new_values['name']);
-    }
+    $audit = Audit::query()
+        ->where('auditable_type', $scope->getMorphClass())
+        ->where('auditable_id', $scope->getKey())
+        ->where('event', 'created')
+        ->firstOrFail();
 
-    public function test_updating_license_scope_writes_audit_with_diff(): void
-    {
-        $scope = LicenseScope::create([
-            'name' => 'Original',
-            'is_active' => true,
-            'default_max_usages' => 1,
-            'default_duration_days' => 30,
-        ]);
+    $this->assertSame((string) $this->admin->getKey(), (string) $audit->user_id);
+    $this->assertSame($this->admin::class, $audit->user_type);
+    $this->assertSame('Scope A', $audit->new_values['name']);
+});
 
-        $scope->update(['name' => 'Renamed']);
+test('updating license scope writes audit with diff', function (): void {
+    $scope = LicenseScope::create([
+        'name' => 'Original',
+        'is_active' => true,
+        'default_max_usages' => 1,
+        'default_duration_days' => 30,
+    ]);
 
-        $audit = Audit::query()
-            ->where('auditable_type', $scope->getMorphClass())
-            ->where('auditable_id', $scope->getKey())
-            ->where('event', 'updated')
-            ->firstOrFail();
+    $scope->update(['name' => 'Renamed']);
 
-        $this->assertSame('Original', $audit->old_values['name']);
-        $this->assertSame('Renamed', $audit->new_values['name']);
-    }
+    $audit = Audit::query()
+        ->where('auditable_type', $scope->getMorphClass())
+        ->where('auditable_id', $scope->getKey())
+        ->where('event', 'updated')
+        ->firstOrFail();
 
-    public function test_deleting_license_scope_writes_audit_record(): void
-    {
-        $scope = LicenseScope::create([
-            'name' => 'Throwaway',
-            'is_active' => true,
-            'default_max_usages' => 1,
-            'default_duration_days' => 30,
-        ]);
-        $scopeId = $scope->getKey();
+    $this->assertSame('Original', $audit->old_values['name']);
+    $this->assertSame('Renamed', $audit->new_values['name']);
+});
 
-        $scope->delete();
+test('deleting license scope writes audit record', function (): void {
+    $scope = LicenseScope::create([
+        'name' => 'Throwaway',
+        'is_active' => true,
+        'default_max_usages' => 1,
+        'default_duration_days' => 30,
+    ]);
+    $scopeId = $scope->getKey();
 
-        $this->assertDatabaseHas('audits', [
-            'auditable_type' => (new LicenseScope)->getMorphClass(),
-            'auditable_id' => $scopeId,
-            'event' => 'deleted',
-            'user_id' => $this->admin->getKey(),
-        ]);
-    }
+    $scope->delete();
 
-    public function test_creating_license_writes_audit_record(): void
-    {
-        $scope = $this->makeScope();
-        $license = $this->makeLicense($scope);
+    $this->assertDatabaseHas('audits', [
+        'auditable_type' => (new LicenseScope)->getMorphClass(),
+        'auditable_id' => $scopeId,
+        'event' => 'deleted',
+        'user_id' => $this->admin->getKey(),
+    ]);
+});
 
-        $this->assertDatabaseHas('audits', [
-            'auditable_type' => $license->getMorphClass(),
-            'auditable_id' => $license->getKey(),
-            'event' => 'created',
-            'user_id' => $this->admin->getKey(),
-        ]);
-    }
+test('creating license writes audit record', function () use ($makeScope, $makeLicense): void {
+    $scope = $makeScope();
+    $license = $makeLicense($scope);
 
-    public function test_updating_license_writes_audit_with_diff(): void
-    {
-        $license = $this->makeLicense($this->makeScope());
+    $this->assertDatabaseHas('audits', [
+        'auditable_type' => $license->getMorphClass(),
+        'auditable_id' => $license->getKey(),
+        'event' => 'created',
+        'user_id' => $this->admin->getKey(),
+    ]);
+});
 
-        $license->update(['max_usages' => 99]);
+test('updating license writes audit with diff', function () use ($makeScope, $makeLicense): void {
+    $license = $makeLicense($makeScope());
 
-        $audit = Audit::query()
-            ->where('auditable_type', $license->getMorphClass())
-            ->where('auditable_id', $license->getKey())
-            ->where('event', 'updated')
-            ->latest('id')
-            ->firstOrFail();
+    $license->update(['max_usages' => 99]);
 
-        $this->assertSame(3, $audit->old_values['max_usages']);
-        $this->assertSame(99, $audit->new_values['max_usages']);
-    }
+    $audit = Audit::query()
+        ->where('auditable_type', $license->getMorphClass())
+        ->where('auditable_id', $license->getKey())
+        ->where('event', 'updated')
+        ->latest('id')
+        ->firstOrFail();
 
-    public function test_deleting_license_writes_audit_record(): void
-    {
-        $license = $this->makeLicense($this->makeScope());
-        $licenseId = $license->getKey();
-        $licenseType = $license->getMorphClass();
+    $this->assertSame(3, $audit->old_values['max_usages']);
+    $this->assertSame(99, $audit->new_values['max_usages']);
+});
 
-        $license->delete();
+test('deleting license writes audit record', function () use ($makeScope, $makeLicense): void {
+    $license = $makeLicense($makeScope());
+    $licenseId = $license->getKey();
+    $licenseType = $license->getMorphClass();
 
-        $this->assertDatabaseHas('audits', [
-            'auditable_type' => $licenseType,
-            'auditable_id' => $licenseId,
-            'event' => 'deleted',
-            'user_id' => $this->admin->getKey(),
-        ]);
-    }
+    $license->delete();
 
-    public function test_license_usage_heartbeat_does_not_write_audit(): void
-    {
-        $usage = $this->makeUsage($this->makeLicense($this->makeScope()));
+    $this->assertDatabaseHas('audits', [
+        'auditable_type' => $licenseType,
+        'auditable_id' => $licenseId,
+        'event' => 'deleted',
+        'user_id' => $this->admin->getKey(),
+    ]);
+});
 
-        $auditCountBefore = Audit::query()
-            ->where('auditable_type', $usage->getMorphClass())
-            ->where('auditable_id', $usage->getKey())
-            ->count();
+test('license usage heartbeat does not write audit', function () use ($makeScope, $makeLicense, $makeUsage): void {
+    $usage = $makeUsage($makeLicense($makeScope()));
 
-        $usage->heartbeat();
+    $auditCountBefore = Audit::query()
+        ->where('auditable_type', $usage->getMorphClass())
+        ->where('auditable_id', $usage->getKey())
+        ->count();
 
-        $auditCountAfter = Audit::query()
-            ->where('auditable_type', $usage->getMorphClass())
-            ->where('auditable_id', $usage->getKey())
-            ->count();
+    $usage->heartbeat();
 
-        $this->assertSame(
-            $auditCountBefore,
-            $auditCountAfter,
-            'Heartbeat updates 只改 last_seen_at，應被 $auditExclude + 空值守門員攔截。',
-        );
-    }
+    $auditCountAfter = Audit::query()
+        ->where('auditable_type', $usage->getMorphClass())
+        ->where('auditable_id', $usage->getKey())
+        ->count();
 
-    public function test_license_usage_non_heartbeat_update_writes_audit(): void
-    {
-        $usage = $this->makeUsage($this->makeLicense($this->makeScope()));
+    $this->assertSame(
+        $auditCountBefore,
+        $auditCountAfter,
+        'Heartbeat updates 只改 last_seen_at，應被 $auditExclude + 空值守門員攔截。',
+    );
+});
 
-        $usage->update([
-            'status' => UsageStatus::Revoked,
-            'revoked_at' => now(),
-        ]);
+test('license usage non heartbeat update writes audit', function () use ($makeScope, $makeLicense, $makeUsage): void {
+    $usage = $makeUsage($makeLicense($makeScope()));
 
-        $audit = Audit::query()
-            ->where('auditable_type', $usage->getMorphClass())
-            ->where('auditable_id', $usage->getKey())
-            ->where('event', 'updated')
-            ->firstOrFail();
+    $usage->update([
+        'status' => UsageStatus::Revoked,
+        'revoked_at' => now(),
+    ]);
 
-        $this->assertArrayHasKey('status', $audit->new_values);
-        $this->assertSame(UsageStatus::Revoked->value, $audit->new_values['status']);
-    }
+    $audit = Audit::query()
+        ->where('auditable_type', $usage->getMorphClass())
+        ->where('auditable_id', $usage->getKey())
+        ->where('event', 'updated')
+        ->firstOrFail();
 
-    public function test_vendor_licensing_audit_log_table_is_not_written(): void
-    {
-        $license = $this->makeLicense($this->makeScope());
-        $license->update(['max_usages' => 50]);
+    $this->assertArrayHasKey('status', $audit->new_values);
+    $this->assertSame(UsageStatus::Revoked->value, $audit->new_values['status']);
+});
 
-        $this->assertSame(
-            0,
-            \DB::table('licensing_audit_logs')->count(),
-            'Vendor 內建 audit 已關閉，licensing_audit_logs 應保持為空。',
-        );
-    }
+test('vendor licensing audit log table is not written', function () use ($makeScope, $makeLicense): void {
+    $license = $makeLicense($makeScope());
+    $license->update(['max_usages' => 50]);
 
-    private function makeScope(): LicenseScope
-    {
-        return LicenseScope::create([
-            'name' => 'Test Scope',
-            'is_active' => true,
-            'default_max_usages' => 3,
-            'default_duration_days' => 365,
-        ]);
-    }
-
-    private function makeLicense(LicenseScope $scope): License
-    {
-        return License::create([
-            'key_hash' => hash('sha256', fake()->uuid()),
-            'status' => LicenseStatus::Pending,
-            'license_scope_id' => $scope->getKey(),
-            'name' => 'Test License',
-            'expires_at' => now()->addDays(365),
-            'max_usages' => 3,
-            'meta' => [],
-        ]);
-    }
-
-    private function makeUsage(License $license): LicenseUsage
-    {
-        return LicenseUsage::create([
-            'license_id' => $license->getKey(),
-            'usage_fingerprint' => fake()->uuid(),
-            'status' => UsageStatus::Active,
-            'registered_at' => now(),
-            'last_seen_at' => now(),
-            'client_type' => 'desktop',
-            'meta' => [],
-        ]);
-    }
-}
+    $this->assertSame(
+        0,
+        DB::table('licensing_audit_logs')->count(),
+        'Vendor 內建 audit 已關閉，licensing_audit_logs 應保持為空。',
+    );
+});

@@ -1,7 +1,5 @@
 <?php
 
-namespace Tests\Feature\Filament;
-
 use App\Filament\Resources\LicenseResource\Pages\EditLicense;
 use App\Models\License;
 use App\Models\LicenseScope;
@@ -9,135 +7,116 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use LucaLongo\Licensing\Enums\LicenseStatus;
-use Tests\TestCase;
 
-class EditLicenseTest extends TestCase
-{
-    use RefreshDatabase;
+uses(RefreshDatabase::class);
 
-    private User $admin;
+beforeEach(function (): void {
+    $this->admin = User::factory()->create();
+    $this->actingAs($this->admin);
 
-    private LicenseScope $scope;
+    $this->scope = LicenseScope::create([
+        'name' => 'Test Scope',
+        'is_active' => true,
+        'default_max_usages' => 3,
+        'default_duration_days' => 365,
+    ]);
+});
 
-    protected function setUp(): void
-    {
-        parent::setUp();
+$createLicense = function (LicenseScope $scope, array $attributes = []): License {
+    return License::create(array_merge([
+        'key_hash' => hash('sha256', fake()->uuid()),
+        'status' => LicenseStatus::Pending,
+        'license_scope_id' => $scope->getKey(),
+        'name' => 'Test License',
+        'expires_at' => now()->addDays(365),
+        'max_usages' => 3,
+        'meta' => [],
+    ], $attributes));
+};
 
-        $this->admin = User::factory()->create();
-        $this->actingAs($this->admin);
+test('can save name change', function () use ($createLicense): void {
+    $license = $createLicense($this->scope, [
+        'status' => LicenseStatus::Active,
+        'activated_at' => now(),
+    ]);
 
-        $this->scope = LicenseScope::create([
-            'name' => 'Test Scope',
-            'is_active' => true,
-            'default_max_usages' => 3,
-            'default_duration_days' => 365,
-        ]);
-    }
+    Livewire::test(EditLicense::class, ['record' => $license->getRouteKey()])
+        ->fillForm(['name' => 'Updated Name'])
+        ->call('save')
+        ->assertHasNoFormErrors();
 
-    private function createLicense(array $attributes = []): License
-    {
-        return License::create(array_merge([
-            'key_hash' => hash('sha256', fake()->uuid()),
-            'status' => LicenseStatus::Pending,
-            'license_scope_id' => $this->scope->getKey(),
-            'name' => 'Test License',
-            'expires_at' => now()->addDays(365),
-            'max_usages' => 3,
-            'meta' => [],
-        ], $attributes));
-    }
+    $license->refresh();
+    $this->assertSame('Updated Name', $license->name);
+});
 
-    public function test_can_save_name_change(): void
-    {
-        $license = $this->createLicense([
-            'status' => LicenseStatus::Active,
-            'activated_at' => now(),
-        ]);
+test('can change status to suspended via dropdown', function () use ($createLicense): void {
+    $license = $createLicense($this->scope, [
+        'status' => LicenseStatus::Active,
+        'activated_at' => now(),
+    ]);
 
-        Livewire::test(EditLicense::class, ['record' => $license->getRouteKey()])
-            ->fillForm(['name' => 'Updated Name'])
-            ->call('save')
-            ->assertHasNoFormErrors();
+    Livewire::test(EditLicense::class, ['record' => $license->getRouteKey()])
+        ->fillForm(['status' => LicenseStatus::Suspended->value])
+        ->call('save')
+        ->assertHasNoFormErrors();
 
-        $license->refresh();
-        $this->assertSame('Updated Name', $license->name);
-    }
+    $license->refresh();
+    $this->assertSame(LicenseStatus::Suspended, $license->status);
+});
 
-    public function test_can_change_status_to_suspended_via_dropdown(): void
-    {
-        $license = $this->createLicense([
-            'status' => LicenseStatus::Active,
-            'activated_at' => now(),
-        ]);
+test('can change status to cancelled via dropdown', function () use ($createLicense): void {
+    $license = $createLicense($this->scope, [
+        'status' => LicenseStatus::Active,
+        'activated_at' => now(),
+    ]);
 
-        Livewire::test(EditLicense::class, ['record' => $license->getRouteKey()])
-            ->fillForm(['status' => LicenseStatus::Suspended->value])
-            ->call('save')
-            ->assertHasNoFormErrors();
+    Livewire::test(EditLicense::class, ['record' => $license->getRouteKey()])
+        ->fillForm(['status' => LicenseStatus::Cancelled->value])
+        ->call('save')
+        ->assertHasNoFormErrors();
 
-        $license->refresh();
-        $this->assertSame(LicenseStatus::Suspended, $license->status);
-    }
+    $license->refresh();
+    $this->assertSame(LicenseStatus::Cancelled, $license->status);
+});
 
-    public function test_can_change_status_to_cancelled_via_dropdown(): void
-    {
-        $license = $this->createLicense([
-            'status' => LicenseStatus::Active,
-            'activated_at' => now(),
-        ]);
+test('delete action visible for pending license', function () use ($createLicense): void {
+    $license = $createLicense($this->scope, ['status' => LicenseStatus::Pending]);
 
-        Livewire::test(EditLicense::class, ['record' => $license->getRouteKey()])
-            ->fillForm(['status' => LicenseStatus::Cancelled->value])
-            ->call('save')
-            ->assertHasNoFormErrors();
+    Livewire::test(EditLicense::class, ['record' => $license->getRouteKey()])
+        ->assertActionVisible('delete');
+});
 
-        $license->refresh();
-        $this->assertSame(LicenseStatus::Cancelled, $license->status);
-    }
+test('delete action hidden for active license', function () use ($createLicense): void {
+    $license = $createLicense($this->scope, [
+        'status' => LicenseStatus::Active,
+        'activated_at' => now(),
+    ]);
 
-    public function test_delete_action_visible_for_pending_license(): void
-    {
-        $license = $this->createLicense(['status' => LicenseStatus::Pending]);
+    Livewire::test(EditLicense::class, ['record' => $license->getRouteKey()])
+        ->assertActionHidden('delete');
+});
 
-        Livewire::test(EditLicense::class, ['record' => $license->getRouteKey()])
-            ->assertActionVisible('delete');
-    }
+test('sensitive attributes are hidden from serialization', function () use ($createLicense): void {
+    $license = $createLicense($this->scope, [
+        'meta' => ['encrypted_key' => 'SENSITIVE-CIPHERTEXT-MARKER'],
+    ]);
 
-    public function test_delete_action_hidden_for_active_license(): void
-    {
-        $license = $this->createLicense([
-            'status' => LicenseStatus::Active,
-            'activated_at' => now(),
-        ]);
+    $serialized = $license->fresh()->toArray();
 
-        Livewire::test(EditLicense::class, ['record' => $license->getRouteKey()])
-            ->assertActionHidden('delete');
-    }
+    $this->assertArrayNotHasKey('key_hash', $serialized);
+    $this->assertArrayNotHasKey('meta', $serialized);
+});
 
-    public function test_sensitive_attributes_are_hidden_from_serialization(): void
-    {
-        $license = $this->createLicense([
-            'meta' => ['encrypted_key' => 'SENSITIVE-CIPHERTEXT-MARKER'],
-        ]);
+test('edit page does not expose key hash or encrypted key', function () use ($createLicense): void {
+    $license = $createLicense($this->scope, [
+        'status' => LicenseStatus::Active,
+        'activated_at' => now(),
+        'meta' => ['encrypted_key' => 'SENSITIVE-CIPHERTEXT-MARKER'],
+    ]);
 
-        $serialized = $license->fresh()->toArray();
-
-        $this->assertArrayNotHasKey('key_hash', $serialized);
-        $this->assertArrayNotHasKey('meta', $serialized);
-    }
-
-    public function test_edit_page_does_not_expose_key_hash_or_encrypted_key(): void
-    {
-        $license = $this->createLicense([
-            'status' => LicenseStatus::Active,
-            'activated_at' => now(),
-            'meta' => ['encrypted_key' => 'SENSITIVE-CIPHERTEXT-MARKER'],
-        ]);
-
-        // Filament Edit 頁以 attributesToArray() 填表單，非 $hidden 屬性會經
-        // Livewire snapshot 序列化到前端 JS——斷言兩個敏感欄位不再出現在渲染輸出
-        Livewire::test(EditLicense::class, ['record' => $license->getRouteKey()])
-            ->assertDontSee($license->key_hash)
-            ->assertDontSee('SENSITIVE-CIPHERTEXT-MARKER');
-    }
-}
+    // Filament Edit 頁以 attributesToArray() 填表單，非 $hidden 屬性會經
+    // Livewire snapshot 序列化到前端 JS——斷言兩個敏感欄位不再出現在渲染輸出
+    Livewire::test(EditLicense::class, ['record' => $license->getRouteKey()])
+        ->assertDontSee($license->key_hash)
+        ->assertDontSee('SENSITIVE-CIPHERTEXT-MARKER');
+});

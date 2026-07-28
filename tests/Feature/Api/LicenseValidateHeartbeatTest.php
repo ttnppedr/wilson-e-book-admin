@@ -1,6 +1,13 @@
 <?php
 
-namespace Tests\Feature\Api;
+/**
+ * ValidateController 心跳路徑的 feature tests。
+ *
+ * 驗證 heartbeat 更新 last_seen_at、client data 合併進 meta.client_data，
+ * 以及一般心跳（不帶 data）不需要額外的 refresh 也能回傳正確狀態。
+ *
+ * 覆寫位置：app/Http/Controllers/Api/ValidateController.php::validateLicense()
+ */
 
 use App\Models\License;
 use App\Models\LicenseUsage;
@@ -11,130 +18,110 @@ use Illuminate\Support\Facades\DB;
 use LucaLongo\Licensing\Enums\LicenseStatus;
 use LucaLongo\Licensing\Enums\UsageStatus;
 use Tests\Concerns\MocksLicenseTokenVerifier;
-use Tests\TestCase;
+
+uses(MocksLicenseTokenVerifier::class, RefreshDatabase::class);
+
+beforeEach(function (): void {
+    // validate 成功時會簽發驗證收據 token（真實走 WilsonPasetoTokenService），
+    // 因此即使 bearer 驗證被 MocksLicenseTokenVerifier mock 掉，仍需要
+    // 真實的 root/signing key 存在，否則 issueToken 會 500。
+    config([
+        'licensing.crypto.keystore.driver' => 'database',
+        'licensing.crypto.keystore.passphrase' => 'heartbeat-test-passphrase',
+    ]);
+    Artisan::call('licensing:keys:make-root');
+    Artisan::call('licensing:keys:issue-signing', ['--days' => 365]);
+});
 
 /**
- * ValidateController 心跳路徑的 feature tests。
+ * 建立 active license + active usage，回傳 [license key, usage]。
  *
- * 驗證 heartbeat 更新 last_seen_at、client data 合併進 meta.client_data，
- * 以及一般心跳（不帶 data）不需要額外的 refresh 也能回傳正確狀態。
- *
- * 覆寫位置：app/Http/Controllers/Api/ValidateController.php::validateLicense()
+ * @return array{0: string, 1: LicenseUsage}
  */
-class LicenseValidateHeartbeatTest extends TestCase
-{
-    use MocksLicenseTokenVerifier;
-    use RefreshDatabase;
+$makeActiveLicenseWithUsage = function (string $fingerprint): array {
+    $licenseKey = 'HEARTBEAT'.bin2hex(random_bytes(6));
+    $license = License::create([
+        'key_hash' => License::hashKey($licenseKey),
+        'status' => LicenseStatus::Active,
+        'activated_at' => now(),
+        'expires_at' => now()->addDays(30),
+        'max_usages' => 1,
+        'meta' => [],
+    ]);
 
-    protected function setUp(): void
-    {
-        parent::setUp();
+    $usage = LicenseUsage::create([
+        'license_id' => $license->getKey(),
+        'usage_fingerprint' => $fingerprint,
+        'status' => UsageStatus::Active,
+        'registered_at' => now()->subDay(),
+        'last_seen_at' => now()->subDay(),
+        'client_type' => 'desktop',
+        'meta' => [],
+    ]);
 
-        // validate 成功時會簽發驗證收據 token（真實走 WilsonPasetoTokenService），
-        // 因此即使 bearer 驗證被 MocksLicenseTokenVerifier mock 掉，仍需要
-        // 真實的 root/signing key 存在，否則 issueToken 會 500。
-        config([
-            'licensing.crypto.keystore.driver' => 'database',
-            'licensing.crypto.keystore.passphrase' => 'heartbeat-test-passphrase',
-        ]);
-        Artisan::call('licensing:keys:make-root');
-        Artisan::call('licensing:keys:issue-signing', ['--days' => 365]);
-    }
+    return [$licenseKey, $usage];
+};
 
-    /**
-     * 建立 active license + active usage，回傳 [license key, usage]。
-     *
-     * @return array{0: string, 1: LicenseUsage}
-     */
-    private function makeActiveLicenseWithUsage(string $fingerprint): array
-    {
-        $licenseKey = 'HEARTBEAT'.bin2hex(random_bytes(6));
-        $license = License::create([
-            'key_hash' => License::hashKey($licenseKey),
-            'status' => LicenseStatus::Active,
-            'activated_at' => now(),
-            'expires_at' => now()->addDays(30),
-            'max_usages' => 1,
-            'meta' => [],
-        ]);
+test('heartbeat without data updates last seen at', function () use ($makeActiveLicenseWithUsage): void {
+    [$licenseKey, $usage] = $makeActiveLicenseWithUsage('hb-fp');
+    $this->acceptAnyTokenFor($licenseKey, 'hb-fp');
 
-        $usage = LicenseUsage::create([
-            'license_id' => $license->getKey(),
-            'usage_fingerprint' => $fingerprint,
-            'status' => UsageStatus::Active,
-            'registered_at' => now()->subDay(),
-            'last_seen_at' => now()->subDay(),
-            'client_type' => 'desktop',
-            'meta' => [],
-        ]);
+    $before = $usage->last_seen_at;
 
-        return [$licenseKey, $usage];
-    }
+    $response = $this->postValidateWithToken([
+        'license_key' => $licenseKey,
+        'fingerprint' => 'hb-fp',
+    ]);
 
-    public function test_heartbeat_without_data_updates_last_seen_at(): void
-    {
-        [$licenseKey, $usage] = $this->makeActiveLicenseWithUsage('hb-fp');
-        $this->acceptAnyTokenFor($licenseKey, 'hb-fp');
+    $response->assertOk();
+    $response->assertJsonPath('success', true);
+    $this->assertTrue($usage->fresh()->last_seen_at->gt($before));
+});
 
-        $before = $usage->last_seen_at;
+test('heartbeat with data merges into client data', function () use ($makeActiveLicenseWithUsage): void {
+    [$licenseKey, $usage] = $makeActiveLicenseWithUsage('hb-fp');
+    $this->acceptAnyTokenFor($licenseKey, 'hb-fp');
 
-        $response = $this->postValidateWithToken([
-            'license_key' => $licenseKey,
-            'fingerprint' => 'hb-fp',
-        ]);
+    $this->postValidateWithToken([
+        'license_key' => $licenseKey,
+        'fingerprint' => 'hb-fp',
+        'data' => ['app_version' => '1.2.3'],
+    ])->assertOk();
 
-        $response->assertOk();
-        $response->assertJsonPath('success', true);
-        $this->assertTrue($usage->fresh()->last_seen_at->gt($before));
-    }
+    // 第二次帶不同 key，驗證是合併而非覆蓋
+    $this->postValidateWithToken([
+        'license_key' => $licenseKey,
+        'fingerprint' => 'hb-fp',
+        'data' => ['device_name' => 'iPad'],
+    ])->assertOk();
 
-    public function test_heartbeat_with_data_merges_into_client_data(): void
-    {
-        [$licenseKey, $usage] = $this->makeActiveLicenseWithUsage('hb-fp');
-        $this->acceptAnyTokenFor($licenseKey, 'hb-fp');
+    $clientData = $usage->fresh()->meta['client_data'] ?? [];
+    $this->assertSame('1.2.3', $clientData['app_version'] ?? null);
+    $this->assertSame('iPad', $clientData['device_name'] ?? null);
+});
 
-        $this->postValidateWithToken([
-            'license_key' => $licenseKey,
-            'fingerprint' => 'hb-fp',
-            'data' => ['app_version' => '1.2.3'],
-        ])->assertOk();
+test('usage summary is correct and counts active usages once', function () use ($makeActiveLicenseWithUsage): void {
+    // max_usages = 1、一個 active usage → active_usages 1、available_seats 0
+    [$licenseKey] = $makeActiveLicenseWithUsage('hb-fp');
+    $this->acceptAnyTokenFor($licenseKey, 'hb-fp');
 
-        // 第二次帶不同 key，驗證是合併而非覆蓋
-        $this->postValidateWithToken([
-            'license_key' => $licenseKey,
-            'fingerprint' => 'hb-fp',
-            'data' => ['device_name' => 'iPad'],
-        ])->assertOk();
+    $usageCountQueries = 0;
+    DB::listen(function (QueryExecuted $query) use (&$usageCountQueries): void {
+        if (str_contains($query->sql, 'count(*)') && str_contains($query->sql, 'license_usages')) {
+            $usageCountQueries++;
+        }
+    });
 
-        $clientData = $usage->fresh()->meta['client_data'] ?? [];
-        $this->assertSame('1.2.3', $clientData['app_version'] ?? null);
-        $this->assertSame('iPad', $clientData['device_name'] ?? null);
-    }
+    $response = $this->postValidateWithToken([
+        'license_key' => $licenseKey,
+        'fingerprint' => 'hb-fp',
+    ]);
 
-    public function test_usage_summary_is_correct_and_counts_active_usages_once(): void
-    {
-        // max_usages = 1、一個 active usage → active_usages 1、available_seats 0
-        [$licenseKey] = $this->makeActiveLicenseWithUsage('hb-fp');
-        $this->acceptAnyTokenFor($licenseKey, 'hb-fp');
+    $response->assertOk();
+    $response->assertJsonPath('data.license.active_usages', 1);
+    $response->assertJsonPath('data.license.available_seats', 0);
 
-        $usageCountQueries = 0;
-        DB::listen(function (QueryExecuted $query) use (&$usageCountQueries): void {
-            if (str_contains($query->sql, 'count(*)') && str_contains($query->sql, 'license_usages')) {
-                $usageCountQueries++;
-            }
-        });
-
-        $response = $this->postValidateWithToken([
-            'license_key' => $licenseKey,
-            'fingerprint' => 'hb-fp',
-        ]);
-
-        $response->assertOk();
-        $response->assertJsonPath('data.license.active_usages', 1);
-        $response->assertJsonPath('data.license.available_seats', 0);
-
-        // 迴歸防護 formatLicense() 覆寫:vendor 版對同一條件重複 COUNT 兩次
-        // (active_usages 一次、getAvailableSeats() 內部一次),覆寫後只允許一次。
-        $this->assertSame(1, $usageCountQueries);
-    }
-}
+    // 迴歸防護 formatLicense() 覆寫:vendor 版對同一條件重複 COUNT 兩次
+    // (active_usages 一次、getAvailableSeats() 內部一次),覆寫後只允許一次。
+    $this->assertSame(1, $usageCountQueries);
+});

@@ -1,17 +1,5 @@
 <?php
 
-namespace Tests\Feature\Audit;
-
-use PhpParser\Node;
-use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Identifier;
-use PhpParser\NodeFinder;
-use PhpParser\NodeTraverser;
-use PhpParser\NodeVisitor\NameResolver;
-use PhpParser\ParserFactory;
-use Tests\TestCase;
-
 /**
  * 用 nikic/php-parser AST 分析 app/ 下的 PHP 檔，比 grep 精準偵測：
  *   1. Eloquent quiet API：saveQuietly / updateQuietly / deleteQuietly / withoutEvents
@@ -24,180 +12,184 @@ use Tests\TestCase;
  * 偽陽性處理：app/Models/Concerns/EnforcesAuditEvents.php 是定義 quiet API 拒絕語意的檔案本身，
  * 透過 $allowedFiles 名單豁免。
  */
-class AuditTargetStaticAnalysisTest extends TestCase
-{
-    /** @var list<class-string> */
-    private const AUDIT_TARGET_MODELS = [
-        \App\Models\License::class,
-        \App\Models\LicenseScope::class,
-        \App\Models\LicenseUsage::class,
-    ];
 
-    private const QUIET_METHODS = [
-        'saveQuietly',
-        'updateQuietly',
-        'deleteQuietly',
-        'withoutEvents',
-    ];
+use App\Models\License;
+use App\Models\LicenseScope;
+use App\Models\LicenseUsage;
+use PhpParser\Node;
+use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Identifier;
+use PhpParser\NodeFinder;
+use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor\NameResolver;
+use PhpParser\ParserFactory;
 
-    /** @var list<string> file paths (relative to project root) that may legitimately reference these APIs */
-    private const ALLOWED_FILES = [
-        'app/Models/Concerns/EnforcesAuditEvents.php',
-    ];
+/** @var list<class-string> 新增 audit 對象 model 時要同步加進這個清單 */
+$auditTargetModels = [
+    License::class,
+    LicenseScope::class,
+    LicenseUsage::class,
+];
 
-    public function test_no_quiet_api_calls_in_app_directory(): void
-    {
-        $offenses = [];
+$quietMethods = [
+    'saveQuietly',
+    'updateQuietly',
+    'deleteQuietly',
+    'withoutEvents',
+];
 
-        foreach ($this->scanAppFiles() as $file => $ast) {
-            if ($this->isAllowedFile($file)) {
-                continue;
-            }
+/** @var list<string> file paths (relative to project root) that may legitimately reference these APIs */
+$allowedFiles = [
+    'app/Models/Concerns/EnforcesAuditEvents.php',
+];
 
-            $finder = new NodeFinder;
-            $methodCalls = $finder->find($ast, fn (Node $node) => $node instanceof MethodCall || $node instanceof StaticCall);
+/**
+ * @return iterable<string, array<Node>>
+ */
+$scanAppFiles = function (): iterable {
+    $root = dirname(__DIR__, 3);
+    $appDir = $root.'/app';
 
-            foreach ($methodCalls as $call) {
-                $name = $call->name instanceof Identifier ? $call->name->toString() : null;
-                if (! in_array($name, self::QUIET_METHODS, true)) {
-                    continue;
-                }
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($appDir, FilesystemIterator::SKIP_DOTS),
+    );
 
-                $offenses[] = sprintf(
-                    '%s:%d → %s 呼叫繞過 audit',
-                    $file,
-                    $call->getStartLine(),
-                    $name,
-                );
-            }
+    $parser = (new ParserFactory)->createForNewestSupportedVersion();
+    $traverser = new NodeTraverser;
+    $traverser->addVisitor(new NameResolver);
+
+    foreach ($iterator as $file) {
+        if ($file->getExtension() !== 'php') {
+            continue;
         }
 
-        $this->assertSame(
-            [],
-            $offenses,
-            "偵測到繞過 audit 的 API 呼叫：\n  - ".implode("\n  - ", $offenses)
-            ."\n若有合法用途請加入 ".self::class.'::ALLOWED_FILES。',
-        );
-    }
+        $relative = substr($file->getPathname(), strlen($root) + 1);
+        $code = file_get_contents($file->getPathname());
 
-    public function test_no_mass_update_or_delete_on_audit_target_models(): void
-    {
-        $offenses = [];
-        $targetShortNames = array_map('class_basename', self::AUDIT_TARGET_MODELS);
-
-        foreach ($this->scanAppFiles() as $file => $ast) {
-            if ($this->isAllowedFile($file)) {
-                continue;
-            }
-
-            $finder = new NodeFinder;
-
-            foreach ($finder->find($ast, fn (Node $node) => $node instanceof MethodCall) as $call) {
-                $methodName = $call->name instanceof Identifier ? $call->name->toString() : null;
-                if (! in_array($methodName, ['update', 'delete'], true)) {
-                    continue;
-                }
-
-                $rootClass = $this->resolveStaticCallRoot($call);
-                if ($rootClass === null) {
-                    continue;
-                }
-
-                if (! in_array($rootClass, self::AUDIT_TARGET_MODELS, true)) {
-                    continue;
-                }
-
-                $offenses[] = sprintf(
-                    '%s:%d → %s::...->%s() 是 mass %s，會繞過 Eloquent 事件',
-                    $file,
-                    $call->getStartLine(),
-                    class_basename($rootClass),
-                    $methodName,
-                    $methodName,
-                );
-            }
+        try {
+            $ast = $parser->parse($code) ?? [];
+        } catch (Throwable) {
+            continue;
         }
 
-        $this->assertSame(
-            [],
-            $offenses,
-            "偵測到對 audit target model 的 mass update/delete：\n  - ".implode("\n  - ", $offenses)
-            ."\n請改為迴圈呼叫 \$record->save()/->delete()，或在 ".self::class.'::ALLOWED_FILES 加入豁免。',
-        );
+        $resolved = $traverser->traverse($ast);
+
+        yield $relative => $resolved;
     }
+};
 
-    /**
-     * 沿 method call chain 往上找根呼叫者，若是 Static call 則解析其 class FQN。
-     *
-     * 例如 `License::where(...)->update(...)` 的 chain：
-     *   MethodCall(update) → MethodCall(where) → StaticCall(License::query) ... 但 where 是 Static method on Model
-     *
-     * Eloquent 慣用 `Model::where(...)` 是 StaticCall，後面 ->update 是 MethodCall。
-     * 此方法沿 var/caller 鏈往上找到 StaticCall，回傳其 class FQN。
-     */
-    private function resolveStaticCallRoot(MethodCall $call): ?string
-    {
-        $current = $call->var;
+$isAllowedFile = function (string $relativePath) use ($allowedFiles): bool {
+    return in_array($relativePath, $allowedFiles, true);
+};
 
-        while ($current !== null) {
-            if ($current instanceof StaticCall) {
-                if (! $current->class instanceof Node\Name) {
-                    return null;
-                }
+/**
+ * 沿 method call chain 往上找根呼叫者，若是 Static call 則解析其 class FQN。
+ *
+ * 例如 `License::where(...)->update(...)` 的 chain：
+ *   MethodCall(update) → MethodCall(where) → StaticCall(License::query) ... 但 where 是 Static method on Model
+ *
+ * Eloquent 慣用 `Model::where(...)` 是 StaticCall，後面 ->update 是 MethodCall。
+ * 此方法沿 var/caller 鏈往上找到 StaticCall，回傳其 class FQN。
+ */
+$resolveStaticCallRoot = function (MethodCall $call): ?string {
+    $current = $call->var;
 
-                return $current->class->toString();
+    while ($current !== null) {
+        if ($current instanceof StaticCall) {
+            if (! $current->class instanceof Node\Name) {
+                return null;
             }
 
-            if ($current instanceof MethodCall) {
-                $current = $current->var;
+            return $current->class->toString();
+        }
 
-                continue;
-            }
+        if ($current instanceof MethodCall) {
+            $current = $current->var;
 
-            return null;
+            continue;
         }
 
         return null;
     }
 
-    /**
-     * @return iterable<string, array<Node>>
-     */
-    private function scanAppFiles(): iterable
-    {
-        $root = dirname(__DIR__, 3);
-        $appDir = $root.'/app';
+    return null;
+};
 
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($appDir, \FilesystemIterator::SKIP_DOTS),
-        );
+test('no quiet api calls in app directory', function () use ($scanAppFiles, $isAllowedFile, $quietMethods): void {
+    $offenses = [];
 
-        $parser = (new ParserFactory)->createForNewestSupportedVersion();
-        $traverser = new NodeTraverser;
-        $traverser->addVisitor(new NameResolver);
+    foreach ($scanAppFiles() as $file => $ast) {
+        if ($isAllowedFile($file)) {
+            continue;
+        }
 
-        foreach ($iterator as $file) {
-            if ($file->getExtension() !== 'php') {
+        $finder = new NodeFinder;
+        $methodCalls = $finder->find($ast, fn (Node $node) => $node instanceof MethodCall || $node instanceof StaticCall);
+
+        foreach ($methodCalls as $call) {
+            $name = $call->name instanceof Identifier ? $call->name->toString() : null;
+            if (! in_array($name, $quietMethods, true)) {
                 continue;
             }
 
-            $relative = substr($file->getPathname(), strlen($root) + 1);
-            $code = file_get_contents($file->getPathname());
-
-            try {
-                $ast = $parser->parse($code) ?? [];
-            } catch (\Throwable) {
-                continue;
-            }
-
-            $resolved = $traverser->traverse($ast);
-
-            yield $relative => $resolved;
+            $offenses[] = sprintf(
+                '%s:%d → %s 呼叫繞過 audit',
+                $file,
+                $call->getStartLine(),
+                $name,
+            );
         }
     }
 
-    private function isAllowedFile(string $relativePath): bool
-    {
-        return in_array($relativePath, self::ALLOWED_FILES, true);
+    $this->assertSame(
+        [],
+        $offenses,
+        "偵測到繞過 audit 的 API 呼叫：\n  - ".implode("\n  - ", $offenses)
+        ."\n若有合法用途請加入 tests/Feature/Audit/AuditTargetStaticAnalysisTest.php 的 \$allowedFiles。",
+    );
+});
+
+test('no mass update or delete on audit target models', function () use ($scanAppFiles, $isAllowedFile, $resolveStaticCallRoot, $auditTargetModels): void {
+    $offenses = [];
+
+    foreach ($scanAppFiles() as $file => $ast) {
+        if ($isAllowedFile($file)) {
+            continue;
+        }
+
+        $finder = new NodeFinder;
+
+        foreach ($finder->find($ast, fn (Node $node) => $node instanceof MethodCall) as $call) {
+            $methodName = $call->name instanceof Identifier ? $call->name->toString() : null;
+            if (! in_array($methodName, ['update', 'delete'], true)) {
+                continue;
+            }
+
+            $rootClass = $resolveStaticCallRoot($call);
+            if ($rootClass === null) {
+                continue;
+            }
+
+            if (! in_array($rootClass, $auditTargetModels, true)) {
+                continue;
+            }
+
+            $offenses[] = sprintf(
+                '%s:%d → %s::...->%s() 是 mass %s，會繞過 Eloquent 事件',
+                $file,
+                $call->getStartLine(),
+                class_basename($rootClass),
+                $methodName,
+                $methodName,
+            );
+        }
     }
-}
+
+    $this->assertSame(
+        [],
+        $offenses,
+        "偵測到對 audit target model 的 mass update/delete：\n  - ".implode("\n  - ", $offenses)
+        ."\n請改為迴圈呼叫 \$record->save()/->delete()，或在 tests/Feature/Audit/AuditTargetStaticAnalysisTest.php 的 \$allowedFiles 加入豁免。",
+    );
+});

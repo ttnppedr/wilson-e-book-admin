@@ -21,8 +21,8 @@ Wilson 電子書管理後台，基於 Laravel 13 + Filament v5 建構，整合 `
 - **時區**: 顯示用 `Asia/Taipei`（GMT+8），資料庫儲存為 UTC
 - **Docker**: Sail 使用自訂 Dockerfile（`docker/8.5/Dockerfile`），已加入 `php8.5-gmp` 擴充套件
 - **Pint**: 編輯 PHP 檔案後由 PostToolUse hook 自動逐檔格式化；手動整批格式化用 `vendor/bin/sail bin pint --dirty`
-- **測試**: 已安裝 Pest 5（`tests/Pest.php` 只把 `Tests\TestCase` 綁到 `Feature`；`Unit` 沿用純 `PHPUnit\Framework\TestCase`，維持 `ContentKeyWrapperTest` 不啟動 Laravel app），但**現存 25 個測試檔全部是 PHPUnit class 語法**，由 Pest runner 執行。兩種語法可共存，不要為了統一風格而整批改寫既有測試——`AuditTargetResourceGuardrailTest`（`#[DataProvider]` + reflection）與 `AuditTargetStaticAnalysisTest`（php-parser AST）是有狀態的 class 型測試，改成 closure 只會更難讀
-- **測試效能**: 用 `composer test:parallel`（181 個測試 8.6s → 2.5s，12 processes）。`--profile` 顯示負載分佈平均、無單一瓶頸（最慢 10 個僅佔 29%，最慢者為 `LicensePasetoIssuanceTest` 的真實 Ed25519 簽章，刻意不 mock），故**平行化是唯一有效的槓桿**，逐個優化測試不會有回報。以下兩項**在現況下不可用**，不要重複嘗試：`--dirty` 已實測無效（即使測試檔確有 git 變更仍跑滿全部、也不拋 `NoDirtyTestsFound`，成因應與 TIA 同為 filter 依賴 Pest 的 TestCase 綁定）；`--tia` 遇到 PHPUnit class 會直接 Panic（`EnsureTiaIsRunningPestTestsOnly` 檢查 `__initializeTestCase` 是否存在，無豁免機制），要開啟必須 25 檔全數改寫成 Pest 語法
+- **測試**: Pest 5，**27 個測試檔全部是 Pest closure 語法**（`test('...', function () {...})`）。`tests/Pest.php` 只把 `Tests\TestCase` 綁到 `Feature`；`Unit` 沿用 Pest 預設的 `PHPUnit\Framework\TestCase`，維持 `ContentKeyWrapperTest` 不啟動 Laravel app。**新測試一律寫 Pest 語法，不要退回 PHPUnit class**——只要有任何一個 class 型測試存在，`--tia` 就會整個停用（見下）。慣用轉換：`setUp` → `beforeEach`、`tearDown` → `afterEach`、`private helper` → 檔案級 closure（需 `$this` 者用 `$closure->call($this, ...)`）、`#[DataProvider]` → `dataset()` + `->with()`。斷言一律沿用 `$this->assertX()`，不必改寫成 `expect()`
+- **測試效能**: 三種模式擇一。`vendor/bin/pest --tia`（**最快，日常首選**）：無變更 0.4s、改動一個 model 約 5s（只重跑受影響者、其餘 replay）；`composer test:parallel` 2.5s；完整序列 10.2s。TIA 靠執行時記錄的相依圖判斷影響範圍，**變更偵測是語意層級**——加空行/改排版不會觸發重跑，改 `Wordwall::category()` 的外鍵則精準牽動 63 個測試。首次或相依圖過期時會自動全跑重建（約 12s）。`--profile` 顯示負載分佈平均、無單一瓶頸（最慢 10 個僅佔 29%，最慢者為 `LicensePasetoIssuanceTest` 的真實 Ed25519 簽章，刻意不 mock），故逐個優化個別測試不會有回報。**`--dirty` 實測無效**（即使測試檔確有 git 變更仍跑滿全部、也不拋 `NoDirtyTestsFound`），直接用 `--tia` 取代它
 - **測試工具鏈版本凍結**: Pest 5.0.0 宣告 `conflict: phpunit/phpunit >13.2.4`，把 PHPUnit 釘死在單一 patch 版；`brianium/paratest` 7.23.1 因 require `phpunit ^13.2.5` 而被同一條約束連帶擋住。故 `composer outdated` 會持續顯示 phpunit 13.2.6、paratest 7.23.1 可升卻升不動，**此為預期狀態、非設定損壞**，解凍點是 Pest 發布跟上 PHPUnit 13.2.6 的版本。`phpunit/phpunit` 已從 `require-dev` 移除（改由 pest 以 transitive 相依管理），避免 `outdated --direct` 永遠掛著一個升不動的項目
 - **排程與 CLI**: `licensing:check-expirations` 每日把過期 License 由 active→grace→expired（`routes/console.php`，受 `config/licensing.php` 的 `scheduler.check_expirations` 控制，`onOneServer`+`withoutOverlapping`）。另有 `content-key:create`/`content-key:list`、`licensing:passphrase-generate` 等 CLI。Wordwall 與 WordwallCategory（遊戲分類，name + 圖片；與 Wordwall 為 nullable 一對多，刪分類時遊戲 FK `nullOnDelete`）皆非 audit 對象（model + Filament resource + `v1/wordwalls`、`v1/wordwall-categories`、`v1/wordwall-categories/{id}/image` API），故可合法用 `reorderable('sort')`
 
@@ -76,7 +76,7 @@ Wilson 電子書管理後台，基於 Laravel 13 + Filament v5 建構，整合 `
 1. Model 上 `implements OwenIt\Auditing\Contracts\Auditable` + `use \OwenIt\Auditing\Auditable;`
 2. 加 `use App\Models\Concerns\EnforcesAuditEvents;`（runtime 保護）
 3. 將表名加入 `bin/audit-bypass-scan.sh` 的 `TARGET_TABLES`
-4. 將 model FQN 加入 `tests/Feature/Audit/AuditTargetStaticAnalysisTest::AUDIT_TARGET_MODELS`
+4. 將 model FQN 加入 `tests/Feature/Audit/AuditTargetStaticAnalysisTest.php` 檔案頂層的 `$auditTargetModels` 陣列（改寫為 Pest 語法後已由 class 常數改為檔案級變數）
 5. 在 `AuditTargetResourceGuardrailTest::test_discovery_finds_all_known_audit_target_models` 加入新 model 到 `$expected`
 6. 跑 `composer audit-scan` + audit 相關測試確認全綠
 
