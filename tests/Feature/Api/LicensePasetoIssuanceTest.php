@@ -310,4 +310,48 @@ class LicensePasetoIssuanceTest extends TestCase
             strtotime($claims['exp']),
         );
     }
+
+    /**
+     * 迴歸防護：明文授權碼絕不得出現在任何 API 回應中。
+     *
+     * 業主決策：log / Nightwatch 看得到可接受，但**不可回到 client**。
+     * 目前成立的原因是 activate/validate 全走手工 formatLicense()（無明文
+     * 欄位）、token claims 只帶 license_key_hash、422 只回欄位名不回值。
+     * 未來若升級 vendor 或改動 formatLicense()／buildLicenseResponse()／
+     * 錯誤處理而不慎把 license_key 帶進回應，本測試會立即失敗。
+     */
+    public function test_api_responses_never_contain_plaintext_license_key(): void
+    {
+        $activation = $this->activateThroughEndpoint();
+        $licenseKey = $activation['license_key'];
+
+        $validate = $this->withToken($activation['token'])
+            ->postJson('/api/licensing/v1/validate', [
+                'license_key' => $licenseKey,
+                'fingerprint' => $activation['fingerprint'],
+            ]);
+        $validate->assertStatus(200);
+        $this->assertStringNotContainsString($licenseKey, $validate->getContent());
+
+        // 422 驗證錯誤不得回顯輸入值（只應回欄位名）
+        $invalid = $this->postJson('/api/licensing/v1/activate', [
+            'license_key' => $licenseKey,
+            'fingerprint' => 'regression-fp',
+            // 故意漏 client_ephemeral_public_key
+        ]);
+        $invalid->assertStatus(422);
+        $this->assertStringNotContainsString($licenseKey, $invalid->getContent());
+
+        // 404 未知授權碼不得回顯輸入值
+        $unknownKey = 'NONEXISTENT-KEY-ABC123';
+        $unknown = $this->postJson('/api/licensing/v1/activate', [
+            'license_key' => $unknownKey,
+            'fingerprint' => 'regression-fp',
+            'client_ephemeral_public_key' => base64_encode(
+                sodium_crypto_box_publickey(sodium_crypto_box_keypair()),
+            ),
+        ]);
+        $unknown->assertStatus(404);
+        $this->assertStringNotContainsString($unknownKey, $unknown->getContent());
+    }
 }

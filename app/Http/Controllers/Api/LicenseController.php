@@ -6,6 +6,8 @@ use App\Services\ContentKeyWrapper;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use LucaLongo\Licensing\Enums\KeyStatus;
+use LucaLongo\Licensing\Enums\KeyType;
 use LucaLongo\Licensing\Enums\LicenseStatus;
 use LucaLongo\Licensing\Http\Controllers\Api\LicenseController as BaseLicenseController;
 use LucaLongo\Licensing\Models\License;
@@ -25,6 +27,15 @@ class LicenseController extends BaseLicenseController
      * 必須是 protected：ValidateController（子類）簽發驗證收據時也要用。
      */
     protected const PERPETUAL_TOKEN_TTL_DAYS = 36500;
+
+    /**
+     * 本次回應要一併下發的 signing kid：取自剛簽出 token 的 footer。
+     *
+     * vendor 的 buildPublicKeyBundle() 沒有參數可傳，只能用這個 request-scoped
+     * 欄位把「誰簽了這顆 token」帶進去；由 extractTokenDetails() 設定並在
+     * finally 清空，避免跨請求殘留。
+     */
+    protected ?string $bundleSigningKid = null;
 
     /**
      * ⚠️ 此方法複製自 vendor LicenseController::activate()，在固定位置插入
@@ -224,15 +235,75 @@ class LicenseController extends BaseLicenseController
     }
 
     /**
+     * 覆寫 vendor extractTokenDetails()，把「剛簽出這顆 token 的 kid」交給
+     * buildPublicKeyBundle()。
+     *
+     * 為什麼：vendor 的 bundle 另外查一次「目前 active 的 signing key」，與簽
+     * token 的解析（WilsonPasetoTokenService::issue() → findActiveSigning($scope)）
+     * 是兩套條件——前者看 valid_from/valid_until 時間窗、後者不看；前者不過濾
+     * scope、後者過濾。任一軸分歧就會下發「驗不了這顆 token」的憑證，App 端的
+     * 憑證鏈或簽章驗證必然失敗（bundle 為 null 時 App 直接報「伺服器未回傳授權
+     * 憑證」而無法啟用）。改以 token footer 的 kid 回查，兩者永遠是同一把。
+     * 對齊版本：vendor 2.2.1
+     */
+    protected function extractTokenDetails(string $token): array
+    {
+        $this->bundleSigningKid = $this->extractKidFromFooter($token);
+
+        try {
+            return parent::extractTokenDetails($token);
+        } finally {
+            $this->bundleSigningKid = null;
+        }
+    }
+
+    /**
+     * 從 PASETO v4.public token 的 footer（base64url，第 4 段）取出 kid。
+     * 格式不符時回 null，由 buildPublicKeyBundle() 走 fallback。
+     */
+    protected function extractKidFromFooter(string $token): ?string
+    {
+        $parts = explode('.', $token);
+        if (count($parts) < 4) {
+            return null;
+        }
+
+        $b64 = strtr($parts[3], '-_', '+/');
+        $b64 .= str_repeat('=', (4 - strlen($b64) % 4) % 4);
+        $footer = base64_decode($b64, true);
+        if ($footer === false) {
+            return null;
+        }
+
+        $decoded = json_decode($footer, true);
+
+        return is_array($decoded) && is_string($decoded['kid'] ?? null)
+            ? $decoded['kid']
+            : null;
+    }
+
+    /**
      * 覆寫 vendor buildPublicKeyBundle()。
      *
-     * vendor 的 findActiveSigning() 預設用 forScope(null) 只找無 scope 的 key，
-     * 但本專案的 signing key 綁定 scope，需忽略 scope 限制查找。
-     * 對齊版本：vendor 2.2.1 — 改用 certificateAuthority->getRootPublicKey()。
+     * 解析順序：
+     *   1. 以本次 token footer 的 kid 精確回查——唯一能保證「這份憑證驗得了這顆
+     *      token」的做法。刻意不過濾 status/時間窗：輪替當下剛被 revoke 或剛過
+     *      valid_until 的 key 也必須能下發，否則同一個回應裡的 token 與憑證會
+     *      自相矛盾。
+     *   2. fallback（footer 無 kid 等異常）：type=Signing + status=Active +
+     *      created_at desc。刻意**不加**時間窗、**不過濾** scope，與 issue() 的
+     *      findActiveSigning() 對齊。
+     * 對齊版本：vendor 2.2.1 — root 公鑰改用 certificateAuthority->getRootPublicKey()。
      */
     protected function buildPublicKeyBundle(): ?array
     {
-        $signingKey = LicensingKey::activeSigning()
+        $signingKey = $this->bundleSigningKid !== null
+            ? LicensingKey::findByKid($this->bundleSigningKid)
+            : null;
+
+        $signingKey ??= LicensingKey::query()
+            ->where('type', KeyType::Signing)
+            ->where('status', KeyStatus::Active)
             ->orderBy('created_at', 'desc')
             ->first();
 

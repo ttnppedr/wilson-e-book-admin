@@ -127,11 +127,18 @@ dart run tool/build_release.dart --env=prod        # 或 --env=staging（預設�
 - **要輪替就輪替 signing key**（App 免更新，因為只釘 root）：
 
   ```bash
-  php artisan licensing:keys:rotate          # 產新 signing key、由同一 root 簽發
-  php artisan licensing:keys:revoke <kid>    # 撤銷舊 signing key（視需要）
+  php artisan licensing:keys:issue-signing --days=3650   # 產新 signing key，10 年期
+  php artisan licensing:keys:revoke <kid>                # 撤銷舊 signing key（視需要）
   ```
 
   新 signing key 的憑證由現有 root 簽發，App 用內嵌 root 公鑰即可驗過新鏈。
+
+  > ⚠️ **不要用 `licensing:keys:rotate`**（`issue-signing` 也**不要省略
+  > `--days`**）。兩者的預設效期都是 **30 天**（`RotateKeysCommand` 硬編
+  > `now()->addDays(30)`）。憑證一過期，已出貨的白板每次冷啟 restore 都會在
+  > `CertificateChainVerifier` 撞上 `Certificate has expired` → 清憑證 →
+  > **整批機隊在離線狀態下被鎖死**，且無法用後端修補（憑證早已隨 token 派送
+  > 到裝置上）。除非你有把握在 30 天內完成全機隊線上換發，否則一律簽長期。
 
 - **務必備份**：`LICENSING_KEY_PASSPHRASE`（存密碼管理器）＋ 資料庫（含
   `licensing_keys` 表）。兩者缺一即無法還原 root 私鑰。

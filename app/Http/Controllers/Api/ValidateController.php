@@ -8,6 +8,23 @@ use Illuminate\Http\Request;
 class ValidateController extends LicenseController
 {
     /**
+     * client 可回報的 `data` 鍵名白名單。
+     *
+     * 白名單而非黑名單：日後新增用途要顯式加進來，避免又變成無界的傾倒場。
+     */
+    private const CLIENT_DATA_ALLOWED_KEYS = [
+        'app_version',
+        'device_name',
+        'os_version',
+    ];
+
+    /** `data` 最多幾個鍵 */
+    private const CLIENT_DATA_MAX_KEYS = 10;
+
+    /** `data` 單一值的最大字元數 */
+    private const CLIENT_DATA_MAX_VALUE_LENGTH = 255;
+
+    /**
      * 覆寫 vendor validateLicense()，額外加入 heartbeat（更新 last_seen_at）
      * 與 metadata 合併邏輯，讓 App 端單一端點完成狀態驗證 + 心跳回報。
      * 對齊版本：vendor 2.2.1 — client data 存放在 meta.client_data 下，
@@ -18,8 +35,21 @@ class ValidateController extends LicenseController
         $payload = $this->validate($request, [
             'license_key' => ['required', 'string'],
             'fingerprint' => ['required', 'string', 'max:255'],
-            'data' => ['nullable', 'array'],
+            // `data` 會被 array_merge 累加進 usage.meta，且 LicenseUsage 是
+            // Auditable（每次變更在 audits 再寫一份 old+new，約 2 倍放大）。
+            // 沒有 schema 時，持合法 token 者可反覆 POST 不同鍵名的大 JSON
+            // （php.ini post_max_size=100M）把單列撐爆。因此限制鍵名白名單、
+            // 鍵數與值長度。App 端目前不送此欄位，保留純為向後相容。
+            'data' => ['nullable', 'array', 'max:'.self::CLIENT_DATA_MAX_KEYS],
+            'data.*' => ['nullable', 'string', 'max:'.self::CLIENT_DATA_MAX_VALUE_LENGTH],
         ]);
+
+        if (isset($payload['data'])) {
+            $payload['data'] = array_intersect_key(
+                $payload['data'],
+                array_flip(self::CLIENT_DATA_ALLOWED_KEYS),
+            );
+        }
 
         $license = $this->findLicense($payload['license_key']);
         if (! $license) {
