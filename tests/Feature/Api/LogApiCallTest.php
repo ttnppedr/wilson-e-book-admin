@@ -131,3 +131,62 @@ test('non get success response body is still logged', function () use ($lastLogE
     $this->assertSame(200, $entry['status']);
     $this->assertTrue($entry['response']['success'] ?? false);
 });
+
+test('credential material never reaches the log', function () use ($lastLogEntry): void {
+    // validate 成功會真實簽發驗證收據 token，需要 root/signing key
+    $this->createLicensingKeys('log-api-call-redaction-passphrase');
+
+    $licenseKey = 'LOGSECRET'.bin2hex(random_bytes(6));
+    $license = License::create([
+        'key_hash' => License::hashKey($licenseKey),
+        'status' => LicenseStatus::Active,
+        'activated_at' => now(),
+        'expires_at' => now()->addDays(30),
+        'max_usages' => 1,
+        'meta' => [],
+    ]);
+    LicenseUsage::create([
+        'license_id' => $license->getKey(),
+        'usage_fingerprint' => 'redact-fp',
+        'status' => UsageStatus::Active,
+        'registered_at' => now(),
+        'last_seen_at' => now(),
+        'client_type' => 'desktop',
+        'meta' => [],
+    ]);
+    $this->acceptAnyTokenFor($licenseKey, 'redact-fp');
+
+    $this->postValidateWithToken([
+        'license_key' => $licenseKey,
+        'fingerprint' => 'redact-fp',
+    ])->assertOk();
+
+    // 對整份 log 原文斷言，而不是只看解析後的特定欄位——憑證只要在**任何**
+    // 位置（含日後新增的巢狀欄位）落地就算失守。
+    $raw = file_get_contents($this->logPath);
+    $this->assertStringNotContainsString($licenseKey, $raw, '明文授權碼不得寫入 log');
+    $this->assertStringNotContainsString('v4.public.', $raw, '簽發的 PASETO token 不得寫入 log');
+    $this->assertStringContainsString('"license_key":"[REDACTED]"', $raw);
+    $this->assertStringContainsString('"validation_token":"[REDACTED]"', $raw);
+
+    // 遮蔽之後仍要留下可追查的關聯標記，否則客服收到「啟用失敗」就無從定位
+    $entry = $lastLogEntry->call($this, $this->logPath);
+    $this->assertSame(
+        substr(License::hashKey($licenseKey), 0, 12),
+        $entry['request']['license_key_hash_prefix'] ?? null,
+    );
+});
+
+test('redaction reaches nested payload keys', function () use ($lastLogEntry): void {
+    // 不帶 Authorization → 401，屬 >= 400 會記完整 body；此處驗證的是遞迴遮蔽
+    // 本身，故用一個有巢狀敏感鍵的 request body。
+    $this->postJson('/api/licensing/v1/validate', [
+        'license_key' => 'NESTED-SECRET-KEY',
+        'fingerprint' => 'nested-fp',
+        'data' => ['token' => 'should-not-appear'],
+    ])->assertStatus(401);
+
+    $entry = $lastLogEntry->call($this, $this->logPath);
+    $this->assertSame('[REDACTED]', $entry['request']['license_key']);
+    $this->assertSame('[REDACTED]', $entry['request']['data']['token']);
+});
