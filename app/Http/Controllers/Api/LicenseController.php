@@ -53,6 +53,12 @@ class LicenseController extends BaseLicenseController
         'meta',
     ];
 
+    /** `metadata` 中單一字串值的最大字元數 */
+    private const METADATA_MAX_VALUE_LENGTH = 255;
+
+    /** `metadata.meta` 這個自由格式子結構的最大鍵數 */
+    private const METADATA_META_MAX_KEYS = 10;
+
     /**
      * ⚠️ 此方法複製自 vendor LicenseController::activate()，在固定位置插入
      *    client ephemeral key 驗證、ECDH content key wrap、以及把 wrapped
@@ -67,7 +73,19 @@ class LicenseController extends BaseLicenseController
             'license_key' => ['required', 'string'],
             'fingerprint' => ['required', 'string', 'max:255'],
             'client_ephemeral_public_key' => ['required', 'string'],
-            'metadata' => ['nullable', 'array'],
+            // `metadata` 的白名單鍵最終會寫進 `license_usages`（`meta` 是 JSON 欄位），
+            // 而 LicenseUsage 是 Auditable——每次寫入在 audits 再存一份，約 2 倍放大。
+            // 沒有 schema 時，持金鑰者可用 php.ini 上限內的大 JSON 撐爆單列。
+            // ValidateController 早已為完全相同的威脅加了鍵名白名單 + 鍵數 + 值長度限制，
+            // 但 activate 這條同樣寫 usage.meta 的路徑先前完全沒有，防線只做了一半。
+            //
+            // 鍵數上限直接由白名單長度推導，與 ValidateController 同一慣例：過濾後本來
+            // 就不可能超過白名單大小，另立魔術數字只會讓實際上限需要讀三處才推得出。
+            'metadata' => ['nullable', 'array', 'max:'.count(self::METADATA_ALLOWED_KEYS)],
+            'metadata.client_type' => ['nullable', 'string', 'max:'.self::METADATA_MAX_VALUE_LENGTH],
+            'metadata.name' => ['nullable', 'string', 'max:'.self::METADATA_MAX_VALUE_LENGTH],
+            'metadata.meta' => ['nullable', 'array', 'max:'.self::METADATA_META_MAX_KEYS],
+            'metadata.meta.*' => ['nullable', 'string', 'max:'.self::METADATA_MAX_VALUE_LENGTH],
         ]);
 
         $clientPub = base64_decode($payload['client_ephemeral_public_key'], true);
@@ -142,16 +160,10 @@ class LicenseController extends BaseLicenseController
         sodium_memzero($rawContentKey);
 
         try {
-            // 有到期日：TTL 綁定授權剩餘天數，確保 token 不會活得比授權本身久。
-            // 無到期日 (永久授權)：TTL 設為 PERPETUAL_TOKEN_TTL_DAYS，實質上永不過期。
-            $ttlDays = $license->expires_at !== null
-                ? max(1, (int) ceil(now()->diffInDays($license->expires_at, absolute: true)))
-                : self::PERPETUAL_TOKEN_TTL_DAYS;
-
             // 把 wrapped metadata 作為 extra claim 塞進 PASETO token，由 signing
             // key 的 Ed25519 簽章保護，避免 client 篡改 wrap 參數。
             $token = $this->licensing->issueToken($license, $usage, [
-                'ttl_days' => $ttlDays,
+                'ttl_days' => $this->tokenTtlDays($license),
                 'extra_claims' => [
                     'wrapped_content_key' => $wrapped,
                 ],
@@ -164,6 +176,25 @@ class LicenseController extends BaseLicenseController
         }
 
         return $this->success($this->buildLicenseResponse($license->fresh(), $usage, $token));
+    }
+
+    /**
+     * 簽發 token 的 TTL（天）。
+     *
+     * 有到期日：綁定授權剩餘天數。無到期日（永久授權）：PERPETUAL_TOKEN_TTL_DAYS。
+     *
+     * 這裡的 ceil() 進位不會讓 token 活得比授權久——`WilsonPasetoTokenService::issue()`
+     * 會再以 `expires_at` 夾住 exp 的上界。TTL 只決定「最多簽多久」，真正的到期上限
+     * 由簽發層負責，兩者不必各自算到毫秒級一致。
+     *
+     * activate 與 validate（子類 ValidateController）共用同一份規則，避免兩處各寫
+     * 一次而日後只改到其中一邊。
+     */
+    protected function tokenTtlDays(License $license): int
+    {
+        return $license->expires_at !== null
+            ? max(1, (int) ceil(now()->diffInDays($license->expires_at, absolute: true)))
+            : self::PERPETUAL_TOKEN_TTL_DAYS;
     }
 
     /**

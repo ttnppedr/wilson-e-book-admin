@@ -24,7 +24,9 @@ use ParagonIE\Paseto\Protocol\Version4;
  *
  * ⚠️ 升級 masterix21/laravel-licensing 時務必重新對齊 parent::issue()。
  *    對齊版本：vendor 2.2.1
- *    唯一差異在下方 `$claims = ...` 後方的 extra_claims 合併區塊。
+ *    與 parent 的差異共兩處，皆已就地標註「新增」：
+ *      1. `$expiration` 以 `$license->expires_at` 夾住上界
+ *      2. `$claims = ...` 後方的 extra_claims 合併區塊
  *    （signing key 建構已對齊 vendor 2.0.1 起的 seed-derived 寫法 buildSecretKey()。）
  *
  * 設定方式：在 `config/licensing.php` 的 `offline_token.service` 指向此類別。
@@ -64,6 +66,21 @@ class WilsonPasetoTokenService extends PasetoTokenService
         $expiration = $ttlDays < 0
             ? $now->subDays(abs($ttlDays))
             : $now->addDays($ttlDays);
+
+        // 新增（非 parent 行為）：token 的 exp 不得晚於授權到期日。
+        //
+        // `ttl_days` 是「天」粒度，而呼叫端以 ceil() 進位算剩餘天數，兩者相加會讓
+        // token 比授權多活最多約 24 小時——與「到期即失效、無寬限期」的產品決策
+        // 直接矛盾（到期前一分鐘呼叫 validate，會拿到一顆多活近一天的 token）。
+        // 夾在簽發層而不是要求每個呼叫端各自算對，讓「token 不會活得比授權久」
+        // 成為這支方法的不變量。
+        if ($license->expires_at !== null) {
+            $licenseExpiration = $license->expires_at->toImmutable();
+
+            if ($expiration->greaterThan($licenseExpiration)) {
+                $expiration = $licenseExpiration;
+            }
+        }
 
         $forceOnlineDays = $license->getForceOnlineAfterDays();
         $forceOnlineAfter = $forceOnlineDays < 0

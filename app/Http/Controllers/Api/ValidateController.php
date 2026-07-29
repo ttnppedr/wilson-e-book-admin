@@ -88,12 +88,8 @@ class ValidateController extends LicenseController
         // validate 都把強制上線截止點往後推。App 用內嵌 root 驗證後替換已存 token，
         // 使「最近是否線上驗證過」的權威變成不可竄改的簽名 claim（修補 HIGH #6：
         // 原本 App 依賴 SecureStorage 明文 lastValidateAt，root 裝置可竄改延後上線）。
-        $ttlDays = $license->expires_at !== null
-            ? max(1, (int) ceil(now()->diffInDays($license->expires_at, absolute: true)))
-            : self::PERPETUAL_TOKEN_TTL_DAYS;
-
         $validationToken = $this->licensing->issueToken($license, $usage, [
-            'ttl_days' => $ttlDays,
+            'ttl_days' => $this->tokenTtlDays($license),
         ]);
 
         return $this->success([

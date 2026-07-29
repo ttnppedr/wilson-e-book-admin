@@ -334,3 +334,47 @@ test('api responses never contain plaintext license key', function () use ($acti
     $unknown->assertStatus(404);
     $this->assertStringNotContainsString($unknownKey, $unknown->getContent());
 });
+
+test('token expiration never outlives the license', function () use ($createActiveLicense, $activeSigningKey, $parseClaims): void {
+    // 產品決策是「到期即失效、無寬限期」，但 ttl_days 是天粒度、呼叫端又以 ceil()
+    // 進位，先前會簽出比授權多活最多約 24 小時的 token。剩不到一天是最糟情況：
+    // max(1, ...) 保證 TTL 至少 1 天，於是 exp 必然落在 expires_at 之後。
+    [, $license] = $createActiveLicense();
+    $license->update(['expires_at' => now()->addMinutes(5)]);
+    $usage = new LicenseUsage(['usage_fingerprint' => 'clamp-fp']);
+
+    $token = (new WilsonPasetoTokenService)->issue($license, $usage, ['ttl_days' => 1]);
+    $claims = $parseClaims($token, $activeSigningKey->call($this)->getPublicKey());
+
+    $this->assertLessThanOrEqual(
+        $license->fresh()->expires_at->getTimestamp(),
+        strtotime($claims['exp']),
+        'token 的 exp 不得晚於授權到期日',
+    );
+});
+
+test('token expiration is untouched when it already ends before the license expires', function () use ($createActiveLicense, $activeSigningKey, $parseClaims): void {
+    // 夾住上界不能反過來把短 TTL 拉長：授權還有 30 天、只簽 7 天就該是 7 天。
+    [, $license] = $createActiveLicense();
+    $usage = new LicenseUsage(['usage_fingerprint' => 'clamp-fp']);
+
+    $token = (new WilsonPasetoTokenService)->issue($license, $usage, ['ttl_days' => 7]);
+    $claims = $parseClaims($token, $activeSigningKey->call($this)->getPublicKey());
+
+    $this->assertEqualsWithDelta(
+        now()->addDays(7)->getTimestamp(),
+        strtotime($claims['exp']),
+        5,
+    );
+});
+
+test('perpetual license keeps its long lived token', function () use ($createActiveLicense, $activeSigningKey, $parseClaims): void {
+    // expires_at 為 null 時沒有上界可夾，永久授權的 TTL 分支不得被誤傷
+    [, $license] = $createActiveLicense(perpetual: true);
+    $usage = new LicenseUsage(['usage_fingerprint' => 'clamp-fp']);
+
+    $token = (new WilsonPasetoTokenService)->issue($license, $usage, ['ttl_days' => 36500]);
+    $claims = $parseClaims($token, $activeSigningKey->call($this)->getPublicKey());
+
+    $this->assertGreaterThan(now()->addDays(36000)->getTimestamp(), strtotime($claims['exp']));
+});

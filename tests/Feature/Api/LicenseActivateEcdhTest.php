@@ -183,3 +183,66 @@ test('activate does not reject license with null expires at', function () use ($
     $response->assertJsonPath('error.code', 'SERVER_ERROR');
     $response->assertJsonPath('error.message', 'Server error');
 });
+
+/**
+ * activate 的 metadata 收斂。
+ *
+ * 白名單鍵最終會寫進 `license_usages.meta`（JSON 欄位），而 LicenseUsage 是
+ * Auditable——每次寫入在 audits 再存一份，約 2 倍放大。ValidateController 早已為
+ * 完全相同的威脅加了鍵名白名單 + 鍵數 + 值長度限制，activate 這條同樣寫 usage.meta
+ * 的路徑先前完全沒有，防線只做了一半。
+ *
+ * validation 發生在 license 查詢之前，故以不存在的授權碼即可測到。
+ */
+$activatePayload = function (array $metadata): array {
+    return [
+        'license_key' => 'ANY-KEY',
+        'fingerprint' => 'meta-fp',
+        'client_ephemeral_public_key' => base64_encode(random_bytes(32)),
+        'metadata' => $metadata,
+    ];
+};
+
+test('activate rejects oversized metadata values', function () use ($activateUrl, $activatePayload): void {
+    $response = $this->postJson($activateUrl, $activatePayload([
+        'client_type' => str_repeat('a', 256),
+    ]));
+
+    $response->assertStatus(422);
+    $response->assertJsonPath('error.code', 'VALIDATION_FAILED');
+    $response->assertJsonStructure(['error' => ['details' => ['metadata.client_type']]]);
+});
+
+test('activate rejects unbounded metadata meta payloads', function () use ($activateUrl, $activatePayload): void {
+    // 未受限時，持金鑰者可用 php.ini 上限內的大 JSON 撐爆單列（並被 audit 放大）
+    $response = $this->postJson($activateUrl, $activatePayload([
+        'meta' => ['blob' => str_repeat('x', 5000)],
+    ]));
+
+    $response->assertStatus(422);
+    $response->assertJsonStructure(['error' => ['details' => ['metadata.meta.blob']]]);
+});
+
+test('activate rejects too many metadata meta keys', function () use ($activateUrl, $activatePayload): void {
+    $response = $this->postJson($activateUrl, $activatePayload([
+        'meta' => array_combine(
+            array_map(fn (int $i): string => "k{$i}", range(1, 11)),
+            array_fill(0, 11, 'v'),
+        ),
+    ]));
+
+    $response->assertStatus(422);
+    $response->assertJsonStructure(['error' => ['details' => ['metadata.meta']]]);
+});
+
+test('activate accepts metadata within the allowed shape', function () use ($activateUrl, $activatePayload): void {
+    // 通過 validation 後才會去查授權碼，未知授權碼回 404 即代表沒被 422 擋下
+    $response = $this->postJson($activateUrl, $activatePayload([
+        'client_type' => 'desktop',
+        'name' => 'Wilson App',
+        'meta' => ['os_version' => '15.5'],
+    ]));
+
+    $response->assertStatus(404);
+    $response->assertJsonPath('error.code', 'INVALID_KEY');
+});
