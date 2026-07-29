@@ -137,7 +137,7 @@ License 的 `status` 欄位**不會自動**隨 `expires_at` 轉換，必須依�
 
 | 命令 | 執行時機 | 作用 |
 | --- | --- | --- |
-| `licensing:check-expirations` | 每日 02:00（`config('app.timezone')`，Asia/Taipei） | `Active` 且 `expires_at < now()` → `Grace`；`Grace` 且已過 grace days → `Expired` 並觸發 `LicenseExpired` event |
+| `licensing:check-expirations` | 每日 02:00（`config('app.timezone')`，Asia/Taipei） | `Active` 且 `expires_at < now()` → `Expired` 並觸發 `LicenseExpired` event。本專案**無寬限期**，不經 `Grace`（掃描條件仍含 `Grace` 僅為收斂舊資料） |
 
 註冊位置：`routes/console.php`；啟用開關：`config('licensing.scheduler.check_expirations.enabled')`；執行時刻：`config('licensing.scheduler.check_expirations.time')`。
 
@@ -242,7 +242,7 @@ vendor/bin/sail artisan schedule:list
 vendor/bin/sail artisan licensing:check-expirations
 ```
 
-預期輸出：`轉入 grace: N；轉入 expired: M`。
+預期輸出：`轉入 expired: N`。
 
 > `onOneServer()` 需要 cache driver 支援 atomic locks。本專案預設 `CACHE_STORE=database` 已支援，若改用 `file` driver 需移除此設定或改用 redis/memcached。
 
@@ -410,6 +410,10 @@ Cloud 內建排程器，不需要任何 cron 設定：
 
 之後 Cloud 會每分鐘自動呼叫 `php artisan schedule:run`。若希望排程跑在與網頁流量分離的機器上，也可改在 Worker cluster 開啟同一個開關。
 
+> **開了 Scale to Zero 時不是每分鐘喚醒**。Cloud 會依 `schedule:list` 的時刻表**只在排程到期時喚醒** app（開關的說明文字即「wake your app to execute tasks when scheduled」），跑完後依 Sleep after 設定睡回去。以本專案每日 02:00 一次、sleep 5 分鐘計，每天僅多約 5～6 分鐘 compute。
+>
+> 另外**不要**為了排程去開 **Wake up interval** —— 那是給 Background processes（如常駐 queue worker）用的週期性喚醒，會實質侵蝕 Scale to Zero。
+
 **本專案相關注意事項：**
 
 - **多 replica 安全** — Cloud 文件要求多 replica 時排程必須使用 `onOneServer()`，否則每個 replica 都會各跑一次。`routes/console.php` 已經有 `onOneServer()` 與 `withoutOverlapping()`，這點**已符合**。
@@ -421,7 +425,7 @@ Cloud 內建排程器，不需要任何 cron 設定：
 
 ```bash
 php artisan schedule:list              # 確認排程已註冊、下次執行時刻正確
-php artisan licensing:check-expirations # 手動觸發一次，預期輸出「轉入 grace: N；轉入 expired: M」
+php artisan licensing:check-expirations # 手動觸發一次，預期輸出「轉入 expired: N」
 ```
 
 ### 9.7 日誌：`api` channel 需要調整（待決策）
