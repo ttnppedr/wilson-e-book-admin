@@ -58,7 +58,20 @@ class WordwallCategoryResource extends Resource
                 ImageColumn::make('image_path')
                     ->label('圖片')
                     ->disk(config('filesystems.default'))
+                    // ImageColumn 預設 shouldCheckFileExistence = true，會在產生預覽網址前
+                    // 先 $storage->exists()——對 s3 disk 那是**一次真實的 HeadObject 網路
+                    // 往返，且逐列序列化執行**。本表格 ->paginated(false) 沒有上限，又有
+                    // ->searchable()（每個按鍵一次 Livewire 往返、整表重繪），成本因此是
+                    // 「分類數 × S3 RTT × 每次互動」。本機 MinIO 同主機約 1.3ms/列看不出來，
+                    // 正式站對真實 S3 是 15–40ms/列，量一多就是好幾秒。
+                    //
+                    // 關掉是安全的：image_path 在表單是 ->required()，且 model 的
+                    // updated/deleted hook 會清掉被取代與被刪除的圖檔，「有 image_path 但
+                    // S3 上沒檔」屬於異常狀態，不值得為它對每一列付一次網路往返。代價僅是
+                    // 該情況下顯示破圖而非空白。
+                    ->checkFileExistence(false)
                     // private disk：Filament 自動以 temporaryUrl 簽發後台預覽網址（過期對齊整點）。
+                    // temporaryUrl() 是本地 HMAC 簽章（實測 0.3ms），不涉及網路往返。
                     ->visibility('private'),
                 TextColumn::make('name')
                     ->label('名稱')

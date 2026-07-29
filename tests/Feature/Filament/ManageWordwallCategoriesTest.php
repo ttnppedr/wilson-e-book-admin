@@ -242,3 +242,17 @@ test('tampered image path is rejected on edit', function (): void {
         'image_path' => $originalPath,
     ]);
 });
+
+test('image column does not check file existence per row', function (): void {
+    // 效能守則：ImageColumn 預設會在每列產生預覽網址前呼叫 $storage->exists()，
+    // 對 s3 disk 是一次真實的 HeadObject 網路往返。本表格 ->paginated(false) 無上限、
+    // 又有 ->searchable()（每個按鍵重繪整表），成本 = 分類數 × S3 RTT × 每次互動。
+    // 本機 MinIO 約 1.3ms/列察覺不到，正式站對真實 S3 是 15–40ms/列。
+    // 這個斷言是為了防止日後有人把 ->checkFileExistence(false) 拿掉而無人察覺。
+    $column = Livewire::test(ManageWordwallCategories::class)
+        ->instance()
+        ->getTable()
+        ->getColumn('image_path');
+
+    expect($column->shouldCheckFileExistence())->toBeFalse();
+});
