@@ -119,7 +119,12 @@ class LicenseScopeResource extends BaseLicenseScopeResource
                 EditAction::make()
                     ->label(__('laravel-licensing-filament-manager::common.actions.edit')),
                 DeleteAction::make()
-                    ->label(__('laravel-licensing-filament-manager::common.actions.delete')),
+                    ->label(__('laravel-licensing-filament-manager::common.actions.delete'))
+                    // 底下還掛著 License 就不給刪：`licenses.license_scope_id` 是
+                    // nullOnDelete，刪掉會由 DB 靜默清空關聯（無 audit），且那些授權
+                    // 會立刻失去 content encryption key 而無法啟用。model 層的
+                    // deleting hook 是最終防線，這裡先把按鈕藏起來免得誤觸。
+                    ->visible(fn (LicenseScope $record): bool => $record->licenses()->doesntExist()),
             ])
             ->toolbarActions([])
             ->defaultSort('created_at', 'desc')
