@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\ValidateController;
 use App\Http\Controllers\Api\WordwallCategoryController;
 use App\Http\Controllers\Api\WordwallCategoryImageController;
 use App\Http\Controllers\Api\WordwallController;
+use App\Http\Middleware\EnsureLicenseUsable;
 use App\Http\Middleware\SetResponseEtag;
 use App\Http\Middleware\VerifyBearerToken;
 use Illuminate\Support\Facades\Route;
@@ -26,12 +27,17 @@ Route::prefix('licensing/v1')
             ->name('licensing.validate');
     });
 
+// 內容端點一律 VerifyBearerToken（驗簽章）+ EnsureLicenseUsable（驗授權現況）。
+// 後者必須排在前者之後——它讀的是 VerifyBearerToken 寫入的 license_claims。
+// 少了它，授權被取消／停權／到期之後既發的 token 仍可無限期存取內容
+// （永久授權 token TTL 為 100 年）。刻意不掛在 validate 上，見該 middleware 註解。
 Route::prefix('v1')
     ->group(function (): void {
         Route::get('wordwalls', WordwallController::class)
             ->middleware([
                 'throttle:api-wordwall',
                 VerifyBearerToken::class,
+                EnsureLicenseUsable::class,
                 SetResponseEtag::class,
             ])
             ->name('v1.wordwalls');
@@ -40,6 +46,7 @@ Route::prefix('v1')
             ->middleware([
                 'throttle:api-wordwall',
                 VerifyBearerToken::class,
+                EnsureLicenseUsable::class,
                 SetResponseEtag::class,
             ])
             ->name('v1.wordwall-categories');
@@ -51,6 +58,7 @@ Route::prefix('v1')
             ->middleware([
                 'throttle:api-wordwall',
                 VerifyBearerToken::class,
+                EnsureLicenseUsable::class,
             ])
             ->name('v1.wordwall-categories.image');
     });

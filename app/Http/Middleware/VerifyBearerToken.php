@@ -13,8 +13,11 @@ use Throwable;
 /**
  * PASETO token 驗證，僅驗簽章有效性，不做 body 欄位交叉比對。
  *
- * 只要求呼叫方持有任何一組合法的 PASETO token 即可存取（authentication only）。
- * 適用於所有需要驗證 bearer token 的 API 端點。
+ * 只要求呼叫方持有任何一組合法的 PASETO token 即可通過（authentication only）。
+ * 「這張授權現在還可不可用」屬於 authorization，由 EnsureLicenseUsable 負責——
+ * 兩者刻意分開，因為 validate 端點必須在授權已取消／到期時仍然可達，才能回覆
+ * 帶原因的 410/423 讓 App 分流；若把狀態檢查併進這裡，validate 會先被擋成 401，
+ * App 就永遠問不出被拒的原因。
  */
 class VerifyBearerToken
 {
