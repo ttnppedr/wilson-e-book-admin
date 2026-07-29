@@ -57,8 +57,13 @@ class License extends BaseLicense implements Auditable
     /**
      * 會被 `expires_at` 推動轉為 Expired 的狀態。
      *
-     * Suspended/Cancelled/Pending 刻意排除：那是管理者的明確決定，不該因為
-     * expires_at 過了就被改寫。Grace 納入僅為收斂舊資料（新流程不再產生）。
+     * Suspended/Cancelled 刻意排除：那是管理者的明確決定，不該因為 expires_at
+     * 過了就被改寫。Grace 納入僅為收斂舊資料（新流程不再產生）。
+     *
+     * Pending 納入：它代表「建立後從未啟用」，不是管理者的處置決定。一張從沒有
+     * 任何裝置啟用過、且 expires_at 已過的授權，狀態顯示 expired 才是事實；停在
+     * pending 會讓後台的統計與篩選把它算成「待啟用」，實際上它已經不可能被啟用
+     * （`LicenseController` / `ValidateController` 會在 activate 前先擋掉）。
      *
      * 定義在此是為了讓 CheckLicenseExpirationsCommand 的 whereIn 與下方
      * transitionToExpired() 的 in_array 同源——同一條產品規則若各寫一次，
@@ -66,17 +71,23 @@ class License extends BaseLicense implements Auditable
      *
      * @var list<LicenseStatus>
      */
-    public const EXPIRABLE_STATUSES = [LicenseStatus::Active, LicenseStatus::Grace];
+    public const EXPIRABLE_STATUSES = [
+        LicenseStatus::Pending,
+        LicenseStatus::Active,
+        LicenseStatus::Grace,
+    ];
 
     /**
-     * 覆寫 vendor transitionToExpired()：允許 Active 直接轉 Expired。
+     * 覆寫 vendor transitionToExpired()：允許 Pending/Active 直接轉 Expired。
      *
      * vendor 原版要求 `isInGracePeriod() && gracePeriodExpired()`，也就是**只能**
      * 由 Grace 轉入。既然本專案永遠不進 Grace，沿用原版會讓已到期的授權永遠停在
-     * Active。改為「Active 或（legacy 殘留的）Grace + expires_at 已過」即轉。
+     * Active。改為「EXPIRABLE_STATUSES 之一 + expires_at 已過」即轉。
      *
-     * 刻意只涵蓋 Active/Grace：Suspended/Cancelled/Pending 是管理者的明確決定，
-     * 不該因為 expires_at 過了就被這支改寫。
+     * 本方法是**冪等**的：兩道 guard（狀態白名單、`isExpired()`）讓已是 Expired
+     * 或尚未到期的授權完全 no-op，不寫 DB 也不寫 audit。因此可以安全地放在每次
+     * API 請求的路徑上重複呼叫——只有「過期後的第一次」會真正寫入。
+     *
      * 對齊版本：vendor 2.2.1
      */
     public function transitionToExpired(): self

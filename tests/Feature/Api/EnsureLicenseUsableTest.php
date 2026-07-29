@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Cache;
 use LucaLongo\Licensing\Enums\LicenseStatus;
 use LucaLongo\Licensing\Enums\UsageStatus;
 use LucaLongo\Licensing\Models\LicenseUsage;
+use OwenIt\Auditing\Models\Audit;
 use Tests\Concerns\MocksLicenseTokenVerifier;
 
 uses(MocksLicenseTokenVerifier::class, RefreshDatabase::class);
@@ -67,6 +68,60 @@ test('expired license is rejected by date even while status is still active', fu
     foreach ($contentEndpoints as $url) {
         $this->getJsonWithToken($url)->assertStatus(401);
     }
+});
+
+/**
+ * 內容端點發現過期時，也要把 status 寫回 DB 並留 audit——與 guardLicenseState()
+ * 同一慣例，三個判斷點行為一致。
+ *
+ * 安全性不依賴這件事（isExpired() 是純日期判斷，改不改都會擋），這裡收斂的是
+ * 「DB 的 status 欄位與事實脫節」的時間差。
+ */
+test('content endpoint writes the expired status back and leaves an audit trail', function (): void {
+    $license = $this->bearerTokenLicense();
+    $license->update([
+        'status' => LicenseStatus::Active,
+        'expires_at' => now()->subMinute(),
+    ]);
+
+    $this->getJsonWithToken('/api/v1/wordwalls')->assertStatus(401);
+
+    $this->assertSame(LicenseStatus::Expired, $license->refresh()->status);
+
+    $audit = Audit::query()
+        ->where('auditable_type', $license->getMorphClass())
+        ->where('auditable_id', $license->getKey())
+        ->where('event', 'updated')
+        ->latest('id')
+        ->firstOrFail();
+
+    $this->assertSame(LicenseStatus::Expired->value, $audit->new_values['status']);
+});
+
+/**
+ * 內容端點是高頻路徑（列表 + 每張圖片各一次請求），重複請求不得反覆寫 DB
+ * 與 audit——transitionToExpired() 的兩道 guard 讓它在 status 已是 Expired
+ * 之後完全 no-op。
+ */
+test('repeated content requests write the expired audit only once', function (): void {
+    $this->bearerTokenLicense()->update([
+        'status' => LicenseStatus::Active,
+        'expires_at' => now()->subMinute(),
+    ]);
+
+    foreach (range(1, 3) as $ignored) {
+        $this->getJsonWithToken('/api/v1/wordwalls')->assertStatus(401);
+    }
+
+    $license = $this->bearerTokenLicense();
+    $auditCount = Audit::query()
+        ->where('auditable_type', $license->getMorphClass())
+        ->where('auditable_id', $license->getKey())
+        ->where('event', 'updated')
+        ->count();
+
+    // 1 筆來自測試自己的 update()，1 筆來自 middleware 的收斂——不該有第 3 筆。
+    $this->assertSame(2, $auditCount);
 });
 
 test('claims without a resolvable license are rejected', function (mixed $licenseId) use ($contentEndpoints): void {

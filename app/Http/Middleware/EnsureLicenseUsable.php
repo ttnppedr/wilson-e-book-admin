@@ -32,6 +32,23 @@ class EnsureLicenseUsable
 
         $license = is_array($claims) ? $this->resolveLicense($claims) : null;
 
+        // 把「已過期」這個既成事實寫回 status，讓 DB 不必等隔天 02:00 的排程才
+        // 收斂，並留下一筆 audit。transitionToExpired() 冪等（狀態白名單 +
+        // isExpired() 兩道 guard），未到期的授權與已是 Expired 的授權都完全
+        // no-op，因此只有「過期後的第一次請求」會真正寫 DB，之後都是純讀。
+        //
+        // 這是本 middleware 唯一的寫入副作用。放在 isUsable() 外面是為了讓那支
+        // 維持純判斷——把寫入藏進名為 isUsable() 的 predicate 會讓呼叫端誤判。
+        $license?->transitionToExpired();
+
+        // 與 guardLicenseState() 同一慣例：真的改了才記，作為「這次收斂由 API
+        // 觸發」的追查依據（audit 的 url 欄位在測試環境一律是 'console'，守不住）。
+        if ($license?->wasChanged('status')) {
+            Log::channel('api')->info('[api] license auto-expired', [
+                'license_id' => $license->getKey(),
+            ]);
+        }
+
         if ($license === null || ! $this->isUsable($license)) {
             return $this->unauthorized($license);
         }

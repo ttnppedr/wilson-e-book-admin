@@ -54,10 +54,7 @@ class ValidateController extends LicenseController
             return $this->error('INVALID_KEY', 'License key is invalid or not found', 404);
         }
 
-        if ($license->status->canActivate()) {
-            $license->activate();
-            $license->refresh();
-        }
+        $this->activateIfPending($license);
 
         if ($response = $this->guardLicenseState($license)) {
             return $response;

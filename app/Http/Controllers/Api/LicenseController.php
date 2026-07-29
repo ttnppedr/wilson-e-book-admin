@@ -102,10 +102,7 @@ class LicenseController extends BaseLicenseController
             return $this->error('INVALID_KEY', 'License key is invalid or not found', 404);
         }
 
-        if ($license->status->canActivate()) {
-            $license->activate();
-            $license->refresh();
-        }
+        $this->activateIfPending($license);
 
         if ($response = $this->guardLicenseState($license)) {
             return $response;
@@ -256,6 +253,60 @@ class LicenseController extends BaseLicenseController
     }
 
     /**
+     * 覆寫 vendor findLicense()，改用 `config('licensing.models.license')` 指定的
+     * model class 查詢。
+     *
+     * ⚠️ 這不是可有可無的整潔化。vendor 的 `Licensing::findByKey()`
+     * （src/Licensing.php:19-22）**硬呼叫** `LucaLongo\Licensing\Models\License::findByKey()`，
+     * 完全不讀 models config——即使其他地方（`LicenseUsage::license()`、vendor 自己的
+     * `CheckExpirationsCommand`）都有讀。於是 activate / validate 這兩個端點拿到的
+     * 一直是 **vendor model**，`App\Models\License` 上的所有覆寫在此路徑全部落空：
+     *
+     *   - `implements Auditable` → API 對 License 的寫入（`activate()` 的
+     *     pending → active）**不寫任何 audit**
+     *   - `EnforcesAuditEvents` → quiet API 的 runtime 保護不存在
+     *   - `transitionToExpired()` → 落回 vendor 版（要求先進 Grace），對 Active
+     *     授權 no-op，到期狀態永遠收斂不了
+     *   - `transitionToGrace()` no-op → 此路徑目前無呼叫點，暫無實害
+     *
+     * 由 `LicenseModelBindingTest` 守護。升級 vendor 時若 `findByKey()` 改為讀
+     * config，本覆寫可以拿掉——但拿掉前務必先讓該測試轉綠。
+     *
+     * 對齊版本：vendor 2.2.1
+     */
+    protected function findLicense(string $licenseKey): ?License
+    {
+        /** @var class-string<License> $model */
+        $model = config('licensing.models.license', License::class);
+
+        return $model::findByKey($licenseKey);
+    }
+
+    /**
+     * Pending 授權於首次連線時自動啟用——但**已過期的不啟用**。
+     *
+     * vendor 的 `LicenseStatus::canActivate()` 只看 `status === Pending`，
+     * `License::activate()` 也完全不檢查 expires_at。少了這道防線，一張建立後從未
+     * 啟用、放到過期才第一次連線的授權會先被寫成 active 並蓋上今天的 activated_at，
+     * 接著才被 guardLicenseState() 以 410 擋下——DB 留下「今天啟用過」的假紀錄與
+     * 兩筆 audit（pending→active、active→expired），但實際上從沒有任何裝置啟用過。
+     *
+     * 擋掉後 status 仍停在 Pending，緊接著由 guardLicenseState() 的
+     * transitionToExpired() 一步收成 Expired（Pending 已納入 EXPIRABLE_STATUSES）。
+     *
+     * activate 與 validate 兩個端點共用此方法，避免同一條規則各寫一次而分歧。
+     */
+    protected function activateIfPending(License $license): void
+    {
+        if (! $license->status->canActivate() || $license->isExpired()) {
+            return;
+        }
+
+        $license->activate();
+        $license->refresh();
+    }
+
+    /**
      * 覆寫 vendor guardLicenseState() 拆分 suspended 與 cancelled。
      *
      * vendor 原版把兩者合併成同一個 SUSPENDED_LICENSE (423)，但 App 端需要對
@@ -281,6 +332,21 @@ class LicenseController extends BaseLicenseController
         // `isExpired()` 是純日期判斷（expires_at 已過），因此**不依賴每日排程**
         // ——授權在到期當下就會被拒，不必等 licensing:check-expirations 跑過。
         if ($license->isExpired()) {
+            // 順手把「已過期」這個既成事實寫回 status，讓 DB 不必等隔天 02:00 的
+            // 排程才收斂，同時留下一筆 audit。transitionToExpired() 冪等，第二次
+            // 以後 status 已是 Expired 就 no-op，不會重複寫 audit。
+            $license->transitionToExpired();
+
+            // 只在真的改了狀態時記一筆，作為「這次收斂由 API 觸發」的追查依據。
+            // 不靠 audit 的 url 欄位區分來源：owen-it 的 UrlResolver 只認
+            // App::runningInConsole()，正式環境雖能區分，測試環境卻一律是
+            // 'console'（Pest 由 CLI 啟動），等於沒有任何測試守得住。
+            if ($license->wasChanged('status')) {
+                Log::channel('api')->info('[api] license auto-expired', [
+                    'license_id' => $license->getKey(),
+                ]);
+            }
+
             return $this->error('EXPIRED_LICENSE', 'License is expired', 410);
         }
 
