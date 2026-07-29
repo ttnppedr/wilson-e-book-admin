@@ -2,8 +2,8 @@
 
 namespace App\Observers;
 
-use Illuminate\Support\Facades\Crypt;
 use App\Models\License;
+use Illuminate\Support\Facades\Crypt;
 
 class LicenseObserver
 {

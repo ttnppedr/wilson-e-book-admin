@@ -3,11 +3,11 @@
 namespace App\Filament\Resources\LicenseResource\Pages;
 
 use App\Filament\Resources\LicenseResource;
+use App\Models\License;
 use App\Models\LicenseScope;
 use App\Services\LicenseKeyGenerator;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
-use App\Models\License;
 
 class CreateLicense extends CreateRecord
 {
