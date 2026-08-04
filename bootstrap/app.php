@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\LogApiCall;
+use App\Http\Middleware\SetNoIndexHeader;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -18,6 +19,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // 全站禁止搜尋引擎收錄（內部後台 + App 專用 API，無 SEO 需求）。
+        $middleware->append(SetNoIndexHeader::class);
+
         $middleware->api(prepend: [
             LogApiCall::class,
         ]);
