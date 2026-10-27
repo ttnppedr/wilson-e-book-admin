@@ -1,0 +1,56 @@
+{
+    "_readme": "由 tests/Fixtures/generate_legacy_token_fixture.php 產生。升級套件後不得重新產生，理由見產生器檔頭。",
+    "generated_at": "2026-10-27T22:29:48+08:00",
+    "generated_with": {
+        "masterix21/laravel-licensing": "2.2.1",
+        "paragonie/paseto": "v3.5.0",
+        "laravel/framework": "v13.24.0"
+    },
+    "issuer": "wilson-ebook-admin",
+    "keystore_passphrase": "legacy-token-fixture-passphrase",
+    "licensing_keys": [
+        {
+            "id": 1,
+            "kid": "root_ByLm3W6xqtIbD5bjppUt5aHrxGLjXplo",
+            "type": "root",
+            "license_scope_id": null,
+            "status": "active",
+            "algorithm": "Ed25519",
+            "public_key": "AtKcL6aUVyKwMzI3pJnZnSK+H4CphJ8W+XwAxZulzHQ=",
+            "private_key_encrypted": "Al2zRx5gEqSYrUx0VVxgbeTMBWm/hLp8/SI53SaT58szPtu1qrlIC/zNe9hkF1aQQIO2O297N79M5bzpZEUJi1l8t8p1BvAppXCn8Vb1IXUzCbvD+pnNg+S/nt9QHQrPybgNSsTLfb36bPBAccdsWlSnVnQmLzilBcyjnCsPuoYzAXOy0hBud/z3G0UrhLrKXw==",
+            "certificate": null,
+            "valid_from": "2026-10-27 22:29:47",
+            "valid_until": null,
+            "revoked_at": null,
+            "revocation_reason": null,
+            "meta": null,
+            "created_at": "2026-10-27 22:29:47",
+            "updated_at": "2026-10-27 22:29:47"
+        },
+        {
+            "id": 2,
+            "kid": "signing-2e9816d391c121796bb0a9260d70c963",
+            "type": "signing",
+            "license_scope_id": null,
+            "status": "active",
+            "algorithm": "Ed25519",
+            "public_key": "tyHEyG3WGL8Kt5449ZSTQSI076HdJa8RLAF5DtJrEkE=",
+            "private_key_encrypted": "As34At+Bs9ZsusZSOvG4enPRYMwA2XWa8XBT/sCXdUIF0PH7B+GOv4mntTX5GLJz6W/QAQc71V8d+vpJdNBjVA7E49QZKNAegHrjcwUPRBmHs5xeAY82C8xRlwZBP/vb+svIkuYR4a7sk1e9lJ8+LA1M3cSVinuhI03ov2+/AfPQNrURve7wGr+1v+uv2o8jIg==",
+            "certificate": "{\"certificate\":{\"kid\":\"signing-2e9816d391c121796bb0a9260d70c963\",\"public_key\":\"tyHEyG3WGL8Kt5449ZSTQSI076HdJa8RLAF5DtJrEkE=\",\"valid_from\":\"2026-10-27T22:29:47+08:00\",\"valid_until\":\"2126-10-03T22:29:47+08:00\",\"issued_at\":\"2026-10-27T22:29:48+08:00\",\"issuer_kid\":\"root_ByLm3W6xqtIbD5bjppUt5aHrxGLjXplo\"},\"signature\":\"+ne21kdxG3LYRjgGfYFtDvQoAMXSiHOCfXAlPbd8RW608ryjyf2W9LgYn3IpW3aMlpEmaKmdyOpd7gOK5MYFAw==\"}",
+            "valid_from": "2026-10-27 22:29:47",
+            "valid_until": "2126-10-03 22:29:47",
+            "revoked_at": null,
+            "revocation_reason": null,
+            "meta": null,
+            "created_at": "2026-10-27 22:29:48",
+            "updated_at": "2026-10-27 22:29:48"
+        }
+    ],
+    "license": {
+        "id": 1,
+        "license_key": "LEGACY-TOKEN-FIXTURE-0001",
+        "fingerprint": "legacy-token-fixture-device"
+    },
+    "activate_token": "v4.public.eyJraWQiOiJzaWduaW5nLTJlOTgxNmQzOTFjMTIxNzk2YmIwYTkyNjBkNzBjOTYzIiwibGljZW5zZV9pZCI6MSwibGljZW5zZV9rZXlfaGFzaCI6Ijk2OTZkZDhmMDEzZmZmNjRkNWI5NDcyYjg1ZThlODRiNGY4MzZjZDVjZGY4NmUzY2UzYzljZDg2Y2U4ZjZiNzciLCJ1c2FnZV9maW5nZXJwcmludCI6ImxlZ2FjeS10b2tlbi1maXh0dXJlLWRldmljZSIsInN0YXR1cyI6ImFjdGl2ZSIsIm1heF91c2FnZXMiOjEsImZvcmNlX29ubGluZV9hZnRlciI6IjIwNTQtMDMtMTNUMjI6Mjk6NDgrMDg6MDAiLCJsaWNlbnNhYmxlX3R5cGUiOm51bGwsImxpY2Vuc2FibGVfaWQiOm51bGwsIndyYXBwZWRfY29udGVudF9rZXkiOnsiYWxnIjoiWDI1NTE5K0hLREYtU0hBMjU2K1hDaGFDaGEyMC1Qb2x5MTMwNSIsInNlcnZlcl9lcGhlbWVyYWxfcHVibGljX2tleSI6IjlDT0UxOUlXaTM2endNMWU3M1JsMUVPR3k0WGh3TXJ3NEhRRWtUbkdxbTA9Iiwic2FsdCI6InJuOHoxUFJjNFlubVFxTitIa0RGNXpST1YyTUJObURWZmVkcE56YjQ0b2c9Iiwibm9uY2UiOiI1Z0xNcUxlVUh4VEZ4M09zWWFPdThXRkl1QXVhUElDUSIsImNpcGhlcnRleHQiOiJyaXB2eHZ5N3RObUUyOHBUeFhiYlBWZFFxR3ZrRGR1SUwxSjVZaHhDWStMc00xTnc1ZWFzV0FGQjdiWWliY2hXIiwiYWFkIjoid2lsc29uLWNvbnRlbnQta2V5LXdyYXAtdjEifSwiaWF0IjoiMjAyNi0xMC0yN1QyMjoyOTo0OCswODowMCIsIm5iZiI6IjIwMjYtMTAtMjdUMjI6Mjk6NDgrMDg6MDAiLCJleHAiOiIyMTI2LTEwLTAzVDIyOjI5OjQ4KzA4OjAwIiwic3ViIjoiMSIsImlzcyI6IndpbHNvbi1lYm9vay1hZG1pbiJ9j9MpNJUH7Dv8oMGSVOmkQ_tu12VHMtirbj_Iw5fu5jQF1Jr8ObW8Gx9KNBq2pswDtCT1eFu0BbFfztnCmj4nBw.eyJraWQiOiJzaWduaW5nLTJlOTgxNmQzOTFjMTIxNzk2YmIwYTkyNjBkNzBjOTYzIiwiY2hhaW4iOnsic2lnbmluZyI6eyJraWQiOiJzaWduaW5nLTJlOTgxNmQzOTFjMTIxNzk2YmIwYTkyNjBkNzBjOTYzIiwicHVibGljX2tleSI6InR5SEV5RzNXR0w4S3Q1NDQ5WlNUUVNJMDc2SGRKYThSTEFGNUR0SnJFa0U9IiwiY2VydGlmaWNhdGUiOiJ7XCJjZXJ0aWZpY2F0ZVwiOntcImtpZFwiOlwic2lnbmluZy0yZTk4MTZkMzkxYzEyMTc5NmJiMGE5MjYwZDcwYzk2M1wiLFwicHVibGljX2tleVwiOlwidHlIRXlHM1dHTDhLdDU0NDlaU1RRU0kwNzZIZEphOFJMQUY1RHRKckVrRT1cIixcInZhbGlkX2Zyb21cIjpcIjIwMjYtMTAtMjdUMjI6Mjk6NDcrMDg6MDBcIixcInZhbGlkX3VudGlsXCI6XCIyMTI2LTEwLTAzVDIyOjI5OjQ3KzA4OjAwXCIsXCJpc3N1ZWRfYXRcIjpcIjIwMjYtMTAtMjdUMjI6Mjk6NDgrMDg6MDBcIixcImlzc3Vlcl9raWRcIjpcInJvb3RfQnlMbTNXNnhxdEliRDVianBwVXQ1YUhyeEdMalhwbG9cIn0sXCJzaWduYXR1cmVcIjpcIituZTIxa2R4RzNMWVJqZ0dmWUZ0RHZRb0FNWFNpSE9DZlhBbFBiZDhSVzYwOHJ5anlmMlc5TGdZbjNJcFczYU1scEVtYUttZHlPcGQ3Z09LNU1ZRkF3PT1cIn0iLCJ2YWxpZF9mcm9tIjoiMjAyNi0xMC0yN1QyMjoyOTo0NyswODowMCIsInZhbGlkX3VudGlsIjoiMjEyNi0xMC0wM1QyMjoyOTo0NyswODowMCJ9LCJyb290Ijp7ImtpZCI6InJvb3RfQnlMbTNXNnhxdEliRDVianBwVXQ1YUhyeEdMalhwbG8iLCJwdWJsaWNfa2V5IjoiQXRLY0w2YVVWeUt3TXpJM3BKblpuU0srSDRDcGhKOFcrWHdBeFp1bHpIUT0iLCJ2YWxpZF9mcm9tIjoiMjAyNi0xMC0yN1QyMjoyOTo0NyswODowMCIsInZhbGlkX3VudGlsIjpudWxsfX19",
+    "validation_token": "v4.public.eyJraWQiOiJzaWduaW5nLTJlOTgxNmQzOTFjMTIxNzk2YmIwYTkyNjBkNzBjOTYzIiwibGljZW5zZV9pZCI6MSwibGljZW5zZV9rZXlfaGFzaCI6Ijk2OTZkZDhmMDEzZmZmNjRkNWI5NDcyYjg1ZThlODRiNGY4MzZjZDVjZGY4NmUzY2UzYzljZDg2Y2U4ZjZiNzciLCJ1c2FnZV9maW5nZXJwcmludCI6ImxlZ2FjeS10b2tlbi1maXh0dXJlLWRldmljZSIsInN0YXR1cyI6ImFjdGl2ZSIsIm1heF91c2FnZXMiOjEsImZvcmNlX29ubGluZV9hZnRlciI6IjIwNTQtMDMtMTNUMjI6Mjk6NDgrMDg6MDAiLCJsaWNlbnNhYmxlX3R5cGUiOm51bGwsImxpY2Vuc2FibGVfaWQiOm51bGwsImlhdCI6IjIwMjYtMTAtMjdUMjI6Mjk6NDgrMDg6MDAiLCJuYmYiOiIyMDI2LTEwLTI3VDIyOjI5OjQ4KzA4OjAwIiwiZXhwIjoiMjEyNi0xMC0wM1QyMjoyOTo0OCswODowMCIsInN1YiI6IjEiLCJpc3MiOiJ3aWxzb24tZWJvb2stYWRtaW4ifTDgFZcnL4Qcxr2QxHS2RjZo32ArxJnwht8lKBpNNO8SABEqas8az3kdbsia06zNCjhqHvwWVsNzIiSXhNcMSwk.eyJraWQiOiJzaWduaW5nLTJlOTgxNmQzOTFjMTIxNzk2YmIwYTkyNjBkNzBjOTYzIiwiY2hhaW4iOnsic2lnbmluZyI6eyJraWQiOiJzaWduaW5nLTJlOTgxNmQzOTFjMTIxNzk2YmIwYTkyNjBkNzBjOTYzIiwicHVibGljX2tleSI6InR5SEV5RzNXR0w4S3Q1NDQ5WlNUUVNJMDc2SGRKYThSTEFGNUR0SnJFa0U9IiwiY2VydGlmaWNhdGUiOiJ7XCJjZXJ0aWZpY2F0ZVwiOntcImtpZFwiOlwic2lnbmluZy0yZTk4MTZkMzkxYzEyMTc5NmJiMGE5MjYwZDcwYzk2M1wiLFwicHVibGljX2tleVwiOlwidHlIRXlHM1dHTDhLdDU0NDlaU1RRU0kwNzZIZEphOFJMQUY1RHRKckVrRT1cIixcInZhbGlkX2Zyb21cIjpcIjIwMjYtMTAtMjdUMjI6Mjk6NDcrMDg6MDBcIixcInZhbGlkX3VudGlsXCI6XCIyMTI2LTEwLTAzVDIyOjI5OjQ3KzA4OjAwXCIsXCJpc3N1ZWRfYXRcIjpcIjIwMjYtMTAtMjdUMjI6Mjk6NDgrMDg6MDBcIixcImlzc3Vlcl9raWRcIjpcInJvb3RfQnlMbTNXNnhxdEliRDVianBwVXQ1YUhyeEdMalhwbG9cIn0sXCJzaWduYXR1cmVcIjpcIituZTIxa2R4RzNMWVJqZ0dmWUZ0RHZRb0FNWFNpSE9DZlhBbFBiZDhSVzYwOHJ5anlmMlc5TGdZbjNJcFczYU1scEVtYUttZHlPcGQ3Z09LNU1ZRkF3PT1cIn0iLCJ2YWxpZF9mcm9tIjoiMjAyNi0xMC0yN1QyMjoyOTo0NyswODowMCIsInZhbGlkX3VudGlsIjoiMjEyNi0xMC0wM1QyMjoyOTo0NyswODowMCJ9LCJyb290Ijp7ImtpZCI6InJvb3RfQnlMbTNXNnhxdEliRDVianBwVXQ1YUhyeEdMalhwbG8iLCJwdWJsaWNfa2V5IjoiQXRLY0w2YVVWeUt3TXpJM3BKblpuU0srSDRDcGhKOFcrWHdBeFp1bHpIUT0iLCJ2YWxpZF9mcm9tIjoiMjAyNi0xMC0yN1QyMjoyOTo0NyswODowMCIsInZhbGlkX3VudGlsIjpudWxsfX19"
+}

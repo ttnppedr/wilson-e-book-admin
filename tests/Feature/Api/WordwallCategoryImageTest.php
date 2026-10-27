@@ -68,6 +68,43 @@ test('redirects to freshly signed temporary url', function () use ($imageUrl): v
     $response->assertRedirect('https://s3.test/signed/wordwall-categories/math.png?sig=stub');
 });
 
+test('redirects to a real s3 presigned url on another origin', function () use ($imageUrl): void {
+    // 上一個測試以 stub 取代簽發；這裡改走真實 aws-sdk 簽章（純本地 HMAC、不連網），
+    // 守護 aws-sdk / guzzle / psr7 升級對 presigned URL 格式的影響。
+    config(['filesystems.disks.s3' => [
+        'driver' => 's3',
+        'key' => 'test-access-key',
+        'secret' => 'test-secret-key',
+        'region' => 'ap-northeast-1',
+        'bucket' => 'wilson-test-bucket',
+        'throw' => false,
+        'report' => false,
+    ]]);
+    Storage::forgetDisk('s3');
+
+    $category = WordwallCategory::factory()->create([
+        'image_path' => 'wordwall-categories/math.png',
+    ]);
+
+    $response = $this->withHeaders(['Authorization' => 'Bearer stub-bearer-token'])
+        ->get($imageUrl($category));
+
+    $response->assertStatus(302);
+    $location = parse_url($response->headers->get('Location'));
+    parse_str($location['query'], $query);
+
+    $this->assertSame('https', $location['scheme']);
+    // 必須轉到不同 origin：App 的 dart:io 只在跨 origin 轉址時剝除 Authorization，
+    // 同 origin 會把 bearer token 一併送給下一跳。
+    $this->assertSame('wilson-test-bucket.s3.ap-northeast-1.amazonaws.com', $location['host']);
+    $this->assertNotSame(parse_url(config('app.url'), PHP_URL_HOST), $location['host']);
+    $this->assertSame('/wordwall-categories/math.png', $location['path']);
+    $this->assertSame('AWS4-HMAC-SHA256', $query['X-Amz-Algorithm']);
+    $this->assertSame('900', $query['X-Amz-Expires']);
+    $this->assertStringStartsWith('test-access-key/', $query['X-Amz-Credential']);
+    $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $query['X-Amz-Signature']);
+});
+
 test('returns unified 404 when category has no image', function () use ($imageUrl): void {
     $category = WordwallCategory::factory()->create(['image_path' => null]);
 
