@@ -27,7 +27,7 @@ class CreateLicense extends CreateRecord
 
         $record = $scope->createLicense($data);
 
-        $this->generatedKey = $record->temporaryLicenseKey;
+        $this->generatedKey = $record->license_key;
 
         return $record->refresh();
     }
