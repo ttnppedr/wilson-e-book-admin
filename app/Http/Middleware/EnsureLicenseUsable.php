@@ -50,7 +50,7 @@ class EnsureLicenseUsable
         }
 
         if ($license === null || ! $this->isUsable($license)) {
-            return $this->unauthorized($license);
+            return $this->reject($license);
         }
 
         return $next($request);
@@ -96,19 +96,26 @@ class EnsureLicenseUsable
     }
 
     /**
-     * 對外一律回 401 INVALID_TOKEN，不分流成 410/423。
-     *
-     * 內容端點的錯誤契約因此維持單一形狀，不必隨授權狀態機新增狀態而跟著改；
-     * App 收到 401 後改打 validate 即可取得帶原因的錯誤碼。真正的狀態只寫進
-     * log 供排錯。
+     * 已出貨的 App 收到內容端點的任何 401 都會直接清除本機授權，不會先問 validate。
+     * 停權的授權必須保留金鑰直到管理者恢復，因此停權回 423 SUSPENDED_LICENSE。
      */
-    private function unauthorized(?License $license): JsonResponse
+    private function reject(?License $license): JsonResponse
     {
         Log::channel('api')->info('[api] license not usable', [
             'internal_code' => 'LICENSE_NOT_USABLE',
             'license_id' => $license?->getKey(),
             'license_status' => $license?->status->value,
         ]);
+
+        if ($license?->status === LicenseStatus::Suspended) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'SUSPENDED_LICENSE',
+                    'message' => 'License is suspended',
+                ],
+            ], 423);
+        }
 
         return response()->json([
             'success' => false,
