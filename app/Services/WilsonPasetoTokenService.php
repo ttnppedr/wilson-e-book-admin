@@ -24,9 +24,10 @@ use ParagonIE\Paseto\Protocol\Version4;
  *
  * ⚠️ 升級 masterix21/laravel-licensing 時務必重新對齊 parent::issue()。
  *    對齊版本：vendor 2.2.1
- *    與 parent 的差異共兩處，皆已就地標註「新增」：
+ *    與 parent 的差異共三處，皆已就地標註「新增」：
  *      1. `$expiration` 以 `$license->expires_at` 夾住上界
  *      2. `$claims = ...` 後方的 extra_claims 合併區塊
+ *      3. `licensable_id` claim 轉為字串
  *    （signing key 建構已對齊 vendor 2.0.1 起的 seed-derived 寫法 buildSecretKey()。）
  *
  * 設定方式：在 `config/licensing.php` 的 `offline_token.service` 指向此類別。
@@ -96,7 +97,8 @@ class WilsonPasetoTokenService extends PasetoTokenService
             'max_usages' => $license->max_usages,
             'force_online_after' => $forceOnlineAfter->format('c'),
             'licensable_type' => $license->licensable_type,
-            'licensable_id' => $license->licensable_id,
+            // 新增（非 parent 行為）：欄位是 bigint，但 App 以 String? 解析，int 會讓整顆 token 解析失敗。
+            'licensable_id' => $license->licensable_id === null ? null : (string) $license->licensable_id,
         ];
 
         if ($license->expires_at) {
@@ -109,7 +111,7 @@ class WilsonPasetoTokenService extends PasetoTokenService
         // `grace_until` 仍保留在下方的保留字清單中，防止經 extra_claims 復活。
 
         // ============================================================
-        // 唯一新增邏輯：合併 extra_claims（保護保留字不被覆蓋）
+        // 新增（非 parent 行為）：合併 extra_claims
         // ============================================================
         $extraClaims = $options['extra_claims'] ?? [];
         if (! empty($extraClaims) && is_array($extraClaims)) {
