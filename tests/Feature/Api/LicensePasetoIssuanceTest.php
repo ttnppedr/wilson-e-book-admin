@@ -25,6 +25,7 @@
 use App\Models\ContentEncryptionKey;
 use App\Models\License;
 use App\Models\LicenseScope;
+use App\Models\User;
 use App\Services\ContentKeyWrapper;
 use App\Services\WilsonPasetoTokenService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -145,6 +146,18 @@ test('issue produces token verifiable by signing public key', function () use ($
 
     // extra_claims 必須原樣保留（由 Ed25519 簽章保護）
     $this->assertSame(ContentKeyWrapper::ALG, $claims['wrapped_content_key']['alg']);
+});
+
+test('licensable claims reach the App as strings', function () use ($createActiveLicense, $activeSigningKey, $parseClaims): void {
+    [, $license] = $createActiveLicense();
+    $license->update(['licensable_type' => User::class, 'licensable_id' => 42]);
+    $usage = new LicenseUsage(['usage_fingerprint' => 'paseto-fp']);
+
+    $token = (new WilsonPasetoTokenService)->issue($license->refresh(), $usage, ['ttl_days' => 7]);
+    $claims = $parseClaims($token, $activeSigningKey->call($this)->getPublicKey());
+
+    $this->assertSame(User::class, $claims['licensable_type']);
+    $this->assertSame('42', $claims['licensable_id']);
 });
 
 test('issue rejects extra claims overriding reserved claims', function () use ($createActiveLicense): void {

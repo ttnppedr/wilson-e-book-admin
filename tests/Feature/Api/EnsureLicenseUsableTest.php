@@ -52,10 +52,20 @@ test('unusable license is rejected on every content endpoint', function (License
     }
 })->with([
     'cancelled' => LicenseStatus::Cancelled,
-    'suspended' => LicenseStatus::Suspended,
     'expired' => LicenseStatus::Expired,
     'pending' => LicenseStatus::Pending,
 ]);
+
+test('suspended license is answered with 423 so the App keeps its keys', function () use ($contentEndpoints): void {
+    $this->bearerTokenLicense()->update(['status' => LicenseStatus::Suspended]);
+
+    foreach ($contentEndpoints as $name => $url) {
+        $response = $this->getJsonWithToken($url);
+
+        $response->assertStatus(423, "{$name} 對停權授權不可回 401");
+        $response->assertJsonPath('error.code', 'SUSPENDED_LICENSE');
+    }
+});
 
 test('expired license is rejected by date even while status is still active', function () use ($contentEndpoints): void {
     // 排程尚未跑過、status 還停在 active，但 expires_at 已過。
