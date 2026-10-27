@@ -65,7 +65,7 @@ class LicenseController extends BaseLicenseController
      *    metadata 注入 PASETO extra_claims 的邏輯。升級
      *    masterix21/laravel-licensing 時，務必重新對齊 parent::activate() 的
      *    最新版本。
-     *    對齊版本：vendor 2.2.1
+     *    對齊版本：vendor 2.3.0
      */
     public function activate(Request $request): JsonResponse
     {
@@ -236,7 +236,7 @@ class LicenseController extends BaseLicenseController
      * 單次 COUNT 補上兩個欄位（`available_seats` 演算法同 vendor
      * `License::getAvailableSeats()`）。
      *
-     * 對齊版本：vendor 2.2.1
+     * 對齊版本：vendor 2.3.0
      */
     protected function formatLicense(License $license, bool $includeUsageSummary = true): array
     {
@@ -272,7 +272,7 @@ class LicenseController extends BaseLicenseController
      * 由 `LicenseModelBindingTest` 守護。升級 vendor 時若 `findByKey()` 改為讀
      * config，本覆寫可以拿掉——但拿掉前務必先讓該測試轉綠。
      *
-     * 對齊版本：vendor 2.2.1
+     * 對齊版本：vendor 2.3.0
      */
     protected function findLicense(string $licenseKey): ?License
     {
@@ -314,7 +314,7 @@ class LicenseController extends BaseLicenseController
      * 輸入框等待 admin 恢復。透過子類別動態分派，activate 與 validate endpoint
      * （ValidateController extends LicenseController）都會套用此覆寫版本。
      *
-     * 對齊版本：vendor 2.2.1
+     * 對齊版本：vendor 2.3.0
      */
     protected function guardLicenseState(License $license): ?JsonResponse
     {
@@ -371,7 +371,7 @@ class LicenseController extends BaseLicenseController
      * 只找 scope=null 的 key，於是下發「驗不了這顆 token」的憑證，App 端的憑證鏈
      * 或簽章驗證必然失敗（bundle 為 null 時 App 直接報「伺服器未回傳授權憑證」而
      * 無法啟用）。改以 token footer 的 kid 回查，兩者永遠是同一把。
-     * 對齊版本：vendor 2.2.1
+     * 對齊版本：vendor 2.3.0
      */
     protected function extractTokenDetails(string $token): array
     {
@@ -416,7 +416,7 @@ class LicenseController extends BaseLicenseController
      *      created_at desc。刻意**比 findActiveSigning() 更寬鬆**——不呼叫
      *      forScope()，因此任何 scope 的 signing key 都撈得到；findActiveSigning()
      *      無參數時會 whereNull('license_scope_id')，反而漏掉 scope 專屬 key。
-     * 對齊版本：vendor 2.2.1 — root 公鑰取自上面已查出的 $rootKey，不再呼叫
+     * 對齊版本：vendor 2.3.0 — root 公鑰取自上面已查出的 $rootKey，不再呼叫
      * certificateAuthority->getRootPublicKey()（其實作即 findActiveRoot()->getPublicKey()，
      * 會對同一 row 重複查一次）。
      */

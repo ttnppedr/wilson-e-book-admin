@@ -88,7 +88,7 @@ class License extends BaseLicense implements Auditable
      * 或尚未到期的授權完全 no-op，不寫 DB 也不寫 audit。因此可以安全地放在每次
      * API 請求的路徑上重複呼叫——只有「過期後的第一次」會真正寫入。
      *
-     * 對齊版本：vendor 2.2.1
+     * 對齊版本：vendor 2.3.0
      */
     public function transitionToExpired(): self
     {

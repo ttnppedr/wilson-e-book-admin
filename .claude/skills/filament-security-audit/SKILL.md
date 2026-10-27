@@ -82,7 +82,6 @@ Injection / D. Query Scoping & Data Exposure / E. Dependencies). Inside a
 category, order by check ID then by location. Required shape:
 
 ```
-
 ### [F-01] Inline ToggleColumn on `is_admin` bypasses the update policy
 
 Check: A4
@@ -193,7 +192,7 @@ authorization. A _missing_ policy is not the trigger.
 - **Docs**:
   https://filamentphp.com/docs/5.x/actions/import#per-record-authorization
 
-### A3. Overridden `can*()` methods no longer invoked (v4+) — `[Site]` `[Conditional]`
+### A3. Actions authorize via response methods, not `can*()` overrides — `[Site]` `[Conditional]`
 
 - **Search**:
   `grep -rnE "function can(Create|Edit|View|ViewAny|Delete|DeleteAny|ForceDelete|ForceDeleteAny|Restore|RestoreAny|Reorder|Replicate|Attach|Detach|DetachAny|Associate|Dissociate|DissociateAny)\(" app/Filament`.
@@ -204,8 +203,8 @@ authorization. A _missing_ policy is not the trigger.
   `get*AuthorizationResponse()` method (which must return an
   `Illuminate\Auth\Access\Response` — `Response::allow()` / `Response::deny()` —
   not a bool).
-- **Why**: in v4+ `can*()` still gates page access, navigation, and global
-  search, but record/bulk **actions** and relation managers authorize via
+- **Why**: `can*()` gates page access, navigation, and global search, but
+  record/bulk **actions** and relation managers authorize via
   `get*AuthorizationResponse()` directly — so the page looks gated while the
   action leaks.
 - **Docs**:
@@ -341,10 +340,12 @@ non-provider field can read provider-backed content if its path is known.
        `FileUpload::configureUsing(...)` default).
 
      - **RichEditor writers**: editors satisfying all three of:
-       - **Accepts attachments** — default toolbar includes `attachFiles`; a
-         custom toolbar (`->toolbarButtons([...])`) that omits it disables
-         attachment uploads, so the editor can't insert `<img data-id>` nodes.
-         Skip.
+       - **Processes attachment IDs** — trace client-controlled rich content to
+         attachment resolution/rendering. Omitting `attachFiles` from the
+         toolbar disables new uploads, not existing-ID processing: a client can
+         submit image nodes without using the toolbar. Do not skip on toolbar
+         config alone; verify whether the submitted IDs reach file URL
+         resolution.
        - **No UUID-scoped provider** — trace the editor to its hosting model and
          check `registerRichContent(..., ...)->fileAttachmentProvider(...)` in
          the model file (`grep -rn "fileAttachmentProvider(" app/Models`
@@ -467,18 +468,15 @@ plain PHP text) are detected by content-sniffing and rejected.
 
 - **Why**: `FileUpload` accepts any type by default. `->acceptedFileTypes(...)`
   activates Laravel's `mimetypes` rule, which content-sniffs the uploaded file
-  via finfo — the client-supplied Content-Type header is ignored and the
-  filename extension is never validated. A renamed `.php` file (raw PHP text)
-  sniffs as `text/x-php` and fails an `image/*` allowlist. A **polyglot** file
-  (valid image magic bytes + embedded PHP) sniffs as an image and passes — it is
-  stopped only when paired with [B3] (random storage filenames keep the `.php`
-  extension off disk). Real-world impact tracks the field's resolved disk
-  (`->disk(...)` → panel default → `config('filament.default_filesystem_disk')`
-  → `FILESYSTEM_DISK`):
+  via finfo; the client-supplied Content-Type header is ignored. Laravel also
+  blocks common PHP filename extensions, including on image/PHP polyglots; this
+  is not a general safe-extension allowlist. Real-world impact tracks the
+  field's resolved disk (`->disk(...)` → panel default →
+  `config('filament.default_filesystem_disk')` → `FILESYSTEM_DISK`):
   - **Web-served disk** (`public` with `storage:link`, or anything Apache /
-    Nginx executes from): unrestricted upload → renamed `.php` lands on disk
-    with an executable extension → RCE. (B2 alone defeats the renamed-PHP
-    attack; [B3] closes the polyglot path.)
+    Nginx executes from): RCE requires the upload to pass validation, be stored
+    with an executable name, and reach a server configured to execute it. Public
+    serving alone does not establish code execution; inspect [B3] too.
   - **Non-served disk** (`s3` / `gcs` / private cloud storage — the production
     default for most Filament apps): no execution path; missing restriction is
     hygiene only, not an exploit. Still worth flagging — a future field added to
@@ -494,22 +492,22 @@ plain PHP text) are detected by content-sniffing and rejected.
 - **Flag if**: used together with a `local`/`public` disk — resolve the disk in
   order: the field's `->disk(...)`, then the panel's
   `->defaultFilesystemDisk()`, then `config('filament.default_filesystem_disk')`
-  (defaults to `FILESYSTEM_DISK` → `local`). `->storeFileNamesIn(` is the safe
-  pattern.
+  (defaults to `FILESYSTEM_DISK` → `local`) — and the actual validation, naming,
+  and server configuration allow an executable upload.
 - **Safe when**: the field targets a non-served disk (e.g. `->disk('s3')`), or
-  uses `->storeFileNamesIn(` → mark `Pass`. A `local`/`public` disk not actually
-  web-served has no execution path either; confirm HTTP reachability before
-  flagging. Filename-collision concerns on a non-public disk belong under [B1],
-  not here.
+  keeps random storage names while storing originals separately with
+  `->storeFileNamesIn(...)`. That method only records original names; it does
+  not override `preserveFilenames()` or a custom naming callback. A
+  `local`/`public` disk not actually web-served has no execution path either;
+  confirm HTTP reachability and code-execution configuration before flagging.
+  Filename-collision concerns on a non-public disk belong under [B1], not here.
 - **Fix**: keep random storage names; store the original with
   `->storeFileNamesIn('column')` instead of preserving it on disk.
-- **Why**: preserving the client filename keeps a `.php` extension on disk;
-  [B2]'s `mimetypes` rule content-sniffs the body but never checks the
-  extension, so a **polyglot** upload (image magic bytes + embedded PHP) passes
-  an `image/*` allowlist while landing as `something.php` — executable code on a
-  PHP-served disk → RCE. Both halves of the chain are needed: B2 alone stops the
-  renamed-only `.php`; B3 alone keeps the extension dangerous; closing one
-  closes the gap.
+- **Why**: user-controlled storage names can retain executable extensions or
+  collide with other files. Laravel's MIME rules also block common PHP client
+  filename extensions, but do not constrain extensions introduced by a custom
+  naming callback. Keep random storage names and prevent execution regardless of
+  accepted types.
 - **Docs**:
   https://filamentphp.com/docs/5.x/forms/file-upload#security-implications-of-controlling-file-names
 
@@ -524,9 +522,12 @@ Every C-check has two halves — **source** (the interpolated value) and **sink*
   `Pass`.
 - **Sink must render raw.** Several Filament paths sanitise downstream
   (`Notification` title/body via `str(...)->sanitizeHtml()`; `->html()` on
-  columns/entries; `RichContentRenderer::toHtml()`). Others don't (action
-  `modalDescription`, `TextEntry::html()` fed a pre-built `Htmlable`, raw
-  `{!! !!}` in Blade, mail/notification views). Sanitised sink → `Pass`.
+  columns/entries; editor-authored content in `RichContentRenderer::toHtml()`).
+  Registered rich-editor custom-block output is trusted application HTML and
+  bypasses that sanitizer; inspect its renderers/previews under [C2].
+  Unsanitised paths include action `modalDescription`, `TextEntry::html()` fed a
+  pre-built `Htmlable`, raw `{!! !!}` in Blade, and mail/notification views.
+  Sanitised sink → `Pass`.
 
 ### C1. Unsanitized rich-editor / markdown output in Blade — `[Seed]` `[Conditional]`
 
@@ -543,9 +544,9 @@ Every C-check has two halves — **source** (the interpolated value) and **sink*
   `{!! str($record->content)->markdown()->sanitizeHtml() !!}`). If the editor
   uses `->json()`, render with
   `Filament\Forms\Components\RichEditor\RichContentRenderer::make($record->content)->toHtml()`
-  (it sanitizes) — `sanitizeHtml()` on raw JSON renders nothing.
-- **Why**: editor content is raw user HTML. Filament's own renderers
-  auto-sanitise, so only your own raw echoes are at risk.
+  (sanitizes editor-authored content, not registered custom-block HTML; see
+  [C2]). `sanitizeHtml()` on raw JSON renders nothing.
+- **Why**: editor content is raw user HTML; raw echoes bypass sanitization.
 - **Docs**:
   - https://filamentphp.com/docs/5.x/forms/rich-editor#security
   - https://filamentphp.com/docs/5.x/forms/markdown-editor#security
@@ -558,10 +559,15 @@ Every C-check has two halves — **source** (the interpolated value) and **sink*
   `HtmlString`, plus `TextEntry|TextColumn::make(...)->html(` where the state is
   built upstream from an `HtmlString` interpolation. `->html()` is safe only
   when the upstream state-builder isn't injecting unescaped data — if it is, the
-  finding sits at the interpolation site, not the `->html()` call.
+  finding sits at the interpolation site, not the `->html()` call. Also search
+  `rg -n 'extends RichContentCustomBlock|customBlocks\(' app` and trace
+  registered `Filament\Forms\Components\RichEditor\RichContentCustomBlock`
+  classes to `toHtml()` / `toPreviewHtml()` and their Blade views. Inspect
+  user-controlled block config in both final output and editor previews.
 - **Flag if**: user-controlled data is interpolated **unescaped** into the raw
-  HTML _and_ the sink renders raw (see C-category intro). Static markup, or
-  output where every dynamic value is `e()`'d, is N/A.
+  HTML _and_ the sink renders raw (see C-category intro), or a user-controlled
+  URL attribute uses an unsafe scheme. Static markup, or output where every
+  dynamic value is escaped and URL schemes are safe, is N/A.
 - **Sink classification**:
   - `Notification::title/body` sanitises downstream → **no finding** (residual
     risk is broken HTML from attributes like `O'Brien` in an `href` — surface as
@@ -569,16 +575,26 @@ Every C-check has two halves — **source** (the interpolated value) and **sink*
   - Action `modalDescription/Heading`, `TextEntry/TextColumn::html()` fed a
     pre-built `Htmlable`, raw `{!! !!}` in a Blade/mail/notification view — no
     downstream sanitiser → **finding**.
-  - A custom view that calls `->sanitizeHtml()` or
-    `RichContentRenderer::toHtml()` on the value before echoing → **Pass**.
+  - Registered custom-block `toHtml()` / `toPreviewHtml()` output has no
+    downstream sanitiser → **finding** when user-controlled config is inserted
+    unescaped or URL attributes use unsafe schemes, even when final content uses
+    `RichContentRenderer::toHtml()`.
+  - A custom view that calls `->sanitizeHtml()` on the value before echoing →
+    **Pass**. `RichContentRenderer::toHtml()` sanitizes editor-authored content;
+    also verify registered blocks escape/sanitize their own dynamic values.
 - **Fix**: prefer `->html()` (when its state isn't already pre-built raw HTML);
-  otherwise `e()` every dynamic value before wrapping `HtmlString`. Symfony's
-  `HtmlSanitizer` default permits inline `style` — configure a stricter
-  sanitizer for fully untrusted content.
+  otherwise `e()` every dynamic value before wrapping `HtmlString`. For custom
+  blocks, escape each dynamic config value in both `toHtml()` and
+  `toPreviewHtml()` output (Blade `{{ }}` for text/quoted attributes), or
+  sanitize deliberately allowed rich HTML before interpolation. URL attributes
+  also require safe schemes: apply `Str::sanitizeUrl()` before escaping; see
+  [C3]. Symfony's `HtmlSanitizer` default permits inline `style` — configure a
+  stricter sanitizer for fully untrusted content.
 - **Docs**:
   - https://filamentphp.com/docs/5.x/tables/columns/text#rendering-raw-html-without-sanitization
   - https://filamentphp.com/docs/5.x/infolists/text-entry#rendering-raw-html-without-sanitization
   - https://filamentphp.com/docs/5.x/schemas/primes#text-component
+  - https://filamentphp.com/docs/5.x/forms/rich-editor#rendering-content-with-custom-blocks
 
 ### C3. Unsafe URL schemes in `url()` — `[Site]` `[Conditional]`
 
@@ -739,9 +755,11 @@ not applying one.
   3. **Use a `creating` model listener** to populate the tenant FK on save
      (covers writes without needing a query scope).
 
-  To drop a single scope without losing tenancy, use
-  `withoutGlobalScope(filament()->getTenancyScopeName())`. Never bare-arg
-  `withoutGlobalScopes()`.
+  To drop a non-tenant scope without losing tenancy, use
+  `withoutGlobalScope(UnwantedScope::class)` or
+  `withoutGlobalScopes([SoftDeletingScope::class])` for soft deletes. Removing
+  `filament()->getTenancyScopeName()` explicitly removes tenant isolation; never
+  use it or bare-arg `withoutGlobalScopes()` to preserve tenancy.
 
 - **Why**: automatic scoping applies only to models with a resource, only inside
   the panel, only after tenant identification.

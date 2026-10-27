@@ -14,11 +14,15 @@
     "sail": true,
     "skills": [
         "infer-conventions",
+        "deploying-to-cloud",
         "laravel-best-practices",
+        "testing-best-practices",
         "configure-nightwatch",
-        "pest-testing",
         "tailwindcss-development",
+        "filament-development",
         "filament-security-audit",
+        "planning-filament",
+        "reviewing-filament-plans",
         "deploying-laravel-cloud"
     ]
 }

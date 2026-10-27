@@ -38,7 +38,7 @@ Wilson 電子書管理後台，基於 Laravel 13 + Filament v5 建構，整合 `
 - `GET api/v1/wordwall-categories` — `Api\WordwallCategoryController`，**巢狀**回傳每個分類（`id, name, image_url, sort`）+ 其底下依 `sort` 排序的 wordwalls（`id, sort, resource_url`），供 App 遊戲頁兩層導覽（分類 → 該分類的遊戲）。需 bearer token + ETag（`SetResponseEtag`）。Throttle `api-wordwall`。兩層 query 皆加 `orderBy('id')` tie-break 確保 ETag 穩定。圖片 `image_url` **不直接給 S3 網址**，而由 `WordwallCategory::image_url` accessor 產生指向下方圖片轉址端點的**穩定 URL**（帶 `v=md5(image_path)` 片段，換圖時即變動以汰換 client 快取、同時不外洩原始儲存路徑）——刻意不放 presigned URL，因其簽章/時間戳每次不同會讓內容型 ETag 每次失效
 - `GET api/v1/wordwall-categories/{id}/image` — `Api\WordwallCategoryImageController`，S3 物件**全程 private**：請求當下以 `Storage::temporaryUrl()` 簽發短效（15 分）presigned 網址並 **302 轉址**，故 bucket 可關閉公開存取（不可列舉/盜連），授權從 bucket 層上移到應用層。需 bearer token（`VerifyBearerToken`，**App 載圖須帶 `Authorization` header**）。**不掛** `SetResponseEtag`（回應為轉址、非可快取 body）。Throttle `api-wordwall`。無圖回統一格式 `IMAGE_NOT_FOUND` 404。後台 Filament 的 `FileUpload`/`ImageColumn` 亦設 `visibility('private')`，預覽由 Filament 對 private disk 自動簽發 `temporaryUrl`（過期對齊整點以利快取）。⚠️ **`ImageColumn` 必須加 `->checkFileExistence(false)`**：它預設 `shouldCheckFileExistence = true`，會在產生預覽網址前先 `$storage->exists()`——對 s3 disk 是一次**真實 HeadObject 網路往返，且逐列序列化**。`WordwallCategoryResource` 的表格 `->paginated(false)`（因 `reorderable('sort')` 與分頁衝突）又有 `->searchable()`（每個按鍵一次 Livewire 往返、整表重繪），成本因此是「分類數 × S3 RTT × 每次互動」。本機 MinIO 同主機約 1.3ms/列察覺不到，正式站對真實 S3 是 15–40ms/列——120 筆本機 264ms、正式站數秒。`temporaryUrl()` 本身是本地 HMAC 簽章（0.3ms）不是瓶頸。由 `ManageWordwallCategoriesTest` 的 `image column does not check file existence per row` 守護
 
-**Vendor 覆寫（升級 gotcha）**: 三處**複製自 vendor 並就地插入自訂邏輯**的覆寫——`Api\LicenseController extends` vendor `BaseLicenseController`（`activate()`）、`ValidateController extends LicenseController`（`validateLicense()`）、`App\Services\WilsonPasetoTokenService extends` vendor `PasetoTokenService`（`issue()`，PASETO 簽章核心；與 parent 有**三處**差異，皆已就地標註「新增」——`$expiration` 以 `expires_at` 夾住上界、extra_claims 合併、`licensable_id` 轉字串（App 以 `String?` 解析））。方法註解皆標註「對齊版本：vendor 2.2.1」。
+**Vendor 覆寫（升級 gotcha）**: 三處**複製自 vendor 並就地插入自訂邏輯**的覆寫——`Api\LicenseController extends` vendor `BaseLicenseController`（`activate()`）、`ValidateController extends LicenseController`（`validateLicense()`）、`App\Services\WilsonPasetoTokenService extends` vendor `PasetoTokenService`（`issue()`，PASETO 簽章核心；與 parent 有**三處**差異，皆已就地標註「新增」——`$expiration` 以 `expires_at` 夾住上界、extra_claims 合併、`licensable_id` 轉字串（App 以 `String?` 解析）；vendor 2.3.0 起 parent 也有自己的 `claims` option，但在本覆寫中不生效，呼叫端一律用 `extra_claims`）。方法註解皆標註「對齊版本：vendor 2.3.0」。
 
 ⚠️ **model binding 陷阱**：`Api\LicenseController::findLicense()` 另有一處**非複製型**覆寫，改用 `config('licensing.models.license')` 查詢。原因是 vendor 的 `Licensing::findByKey()`（`src/Licensing.php:19-22`）**硬呼叫** `LucaLongo\Licensing\Models\License::findByKey()`，不讀 models config（vendor 其他地方如 `LicenseUsage::license()`、`CheckExpirationsCommand` 都有讀，唯獨這條沒有）。少了覆寫，activate / validate 會拿到 **vendor model**，`App\Models\License` 的每項覆寫靜默失效：`implements Auditable`（**API 對 License 的寫入完全不留 audit**）、`EnforcesAuditEvents`、`transitionToExpired()`（落回 vendor 版要求先進 Grace，永遠 no-op）。失效不拋錯、無徵兆。由 `tests/Feature/Api/LicenseModelBindingTest.php` 守護（含型別斷言 + 「API 觸發的 pending → active 必須留 audit」行為斷言）。升級後若 vendor 改為讀 config，可拿掉覆寫——但拿掉前先讓該測試轉綠。**升級 `masterix21/laravel-licensing` 時務必逐一重新對齊 parent 的最新實作**——例如 vendor 自 2.0.1 起把 signing key 建構改為「取前 32 bytes seed 經 `AsymmetricSecretKey::v4()` 重新推導 keypair」（`buildSecretKey()`），以通過 paragonie/paseto 3.5 的 v4 misuse-resistance 檢查；此修正需同步移植，否則輪替到特定金鑰時 `issue()` 會簽章失敗。此真實簽發路徑由 `tests/Feature/Api/LicensePasetoIssuanceTest.php`（真實 root/signing key、不 mock，含 activate 端點端對端解 content key）守護；其餘 API 測試以 `MocksLicenseTokenVerifier` mock 掉 verifier 故碰不到此路徑，另有 `tests/e2e_activate_verify.php` 手動 E2E 腳本。
 
@@ -103,14 +103,12 @@ Wilson 電子書管理後台，基於 Laravel 13 + Filament v5 建構，整合 `
 
 # Laravel Boost Guidelines
 
-The Laravel Boost guidelines are specifically curated by Laravel maintainers for this application. These guidelines should be followed closely to ensure the best experience when building Laravel applications.
-
 ## Foundational Context
 
-This application is a Laravel application running on PHP 8.5. You are an expert with the Laravel ecosystem. Always use the APIs that match the installed major version of each package — do not assume a version.
+This application is a Laravel application running on PHP 8.5. Always use the APIs that match the installed major version of each package — do not assume a version.
 
 Before relying on a package's API, confirm its installed version:
-- PHP packages: run `composer show --direct` to list direct dependencies with versions, or `composer show <vendor/package>` for a single package.
+- PHP packages: run `vendor/bin/sail composer show --direct` to list direct dependencies with versions, or `vendor/bin/sail composer show <vendor/package>` for a single package.
 - JS packages: check `package.json` for the installed versions.
 
 ## Skills Activation
@@ -134,15 +132,11 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 
 ## Frontend Bundling
 
-- If the user doesn't see a frontend change reflected in the UI, it could mean they need to run `vendor/bin/sail npm run build`, `vendor/bin/sail npm run dev`, or `vendor/bin/sail composer run dev`. Ask them.
+- If a frontend change doesn't show in the UI or you get a "Unable to locate file in Vite manifest" error, run `vendor/bin/sail npm run build` or ask the user to run `vendor/bin/sail npm run dev` or `vendor/bin/sail composer run dev`.
 
 ## Documentation Files
 
 - You must only create documentation files if explicitly requested by the user.
-
-## Replies
-
-- Be concise in your explanations - focus on what's important rather than explaining obvious details.
 
 === boost rules ===
 
@@ -158,7 +152,7 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 
 ## Searching Documentation (IMPORTANT)
 
-- Always use `search-docs` before making code changes. Do not skip this step. It returns version-specific docs based on installed packages automatically.
+- Use `search-docs` before changes that depend on Laravel ecosystem APIs, behavior, configuration, or version-specific syntax. Skip it for copy-only edits and other changes where package documentation is irrelevant. Reuse sufficient results already in context instead of searching again.
 - Pass a `packages` array to scope results when you know which packages are relevant.
 - Use multiple broad, topic-based queries: `['rate limiting', 'routing rate limiting', 'routing']`. Expect the most relevant results first.
 - Do not add package names to queries because package info is already shared. Use `test resource table`, not `filament 4 test resource table`.
@@ -172,8 +166,7 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 
 ## Project Rules
 
-- This project contains committed, area-grouped rules in `.ai/rules` when that directory exists (settled decisions, non-obvious traps, standing constraints). Framework and package guidelines that only apply to specific paths (testing, frontend, components) also live there, under `.ai/rules/boost` — this is not just recorded decisions, it is load-bearing guidance you have not seen inline. Before you enter plan mode or create/edit any file, you MUST first: open @.ai/rules/index.md (it maps file globs to rule files), read every rule file whose globs cover the path(s) in scope, and run `grep -rin 'keyword' .ai/rules` to catch what a path match alone misses. Do not write code until you have read and are following every matching rule. If `.ai/rules` does not exist, continue without it.
-- Record durable rules with `record-rule` so the next agent or teammate inherits them instead of working them out again. Pass a `glob` (e.g. `app/Http/Controllers/**`), a short `title`, and a few-line `note`. Always use `record-rule`, never your native memory or notes tool — native memory is personal and session-scoped; only `.ai/rules` is shared with the team and persists in the repo.
+- This project contains committed, area-grouped rules in `.ai/rules` when that directory exists, including path-scoped framework guidelines under `.ai/rules/boost`. Before you enter plan mode or create/edit any file, you MUST first: open @.ai/rules/index.md (it maps file globs to rule files), read every rule file whose globs cover the path(s) in scope, and run `grep -rin 'keyword' .ai/rules` to catch what a path match alone misses. Do not write code until you have read and are following every matching rule. If `.ai/rules` does not exist, continue without it.
 
 ## Artisan
 
@@ -203,6 +196,7 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 # Deployment
 
 - Laravel can be deployed using [Laravel Cloud](https://cloud.laravel.com/), which is the fastest way to deploy and scale production Laravel applications.
+- Activate the `deploying-to-cloud` skill whenever deploying to Laravel Cloud, configuring Cloud environments or resources, using the Cloud CLI, or troubleshooting Cloud deployments.
 
 === sail rules ===
 
@@ -222,8 +216,11 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 
 # Test Enforcement
 
-- Every change must be programmatically tested. Write a new test or update an existing test, then run the affected tests to make sure they pass.
-- Run the minimum number of tests needed to ensure code quality and speed. Use `vendor/bin/sail artisan test --compact` with a specific filename or filter.
+- Add or update tests for behavior and logic changes when a test provides meaningful regression coverage.
+- Pure copy, styling, and layout-only changes do not require new or updated tests.
+- When test coverage applies, run the affected tests and ensure they pass.
+- Test the changed behavior and its important failure modes, but do not add tests beyond them.
+- Read the `testing-best-practices` skill before writing tests.
 
 === laravel/core rules ===
 
@@ -251,10 +248,6 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 - Faker: Use methods such as `$this->faker->word()` or `fake()->randomDigit()`. Follow existing conventions whether to use `$this->faker` or `fake()`.
 - When creating tests, make use of `vendor/bin/sail artisan make:test [options] {name}` to create a feature test, and pass `--unit` to create a unit test. Most tests should be feature tests.
 
-## Vite Error
-
-- If you receive an "Illuminate\Foundation\ViteException: Unable to locate file in Vite manifest" error, you can run `vendor/bin/sail npm run build` or ask the user to run `vendor/bin/sail npm run dev` or `vendor/bin/sail composer run dev`.
-
 === pint/core rules ===
 
 # Laravel Pint Code Formatter
@@ -264,258 +257,18 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 
 === pest/core rules ===
 
-## Pest
-
-- This project uses Pest for testing. Create tests: `vendor/bin/sail artisan make:test --pest {name}`.
-- The `{name}` argument should not include the test suite directory. Use `vendor/bin/sail artisan make:test --pest SomeFeatureTest` instead of `vendor/bin/sail artisan make:test --pest Feature/SomeFeatureTest`.
-- Run tests: `vendor/bin/sail artisan test --compact` or filter: `vendor/bin/sail artisan test --compact --filter=testName`.
-- Do NOT delete tests without approval.
-
-=== filament/filament/core rules ===
-
-## Filament
-
-- Filament is a Laravel UI framework built on Livewire, Alpine.js, and Tailwind CSS. UIs are defined in PHP via fluent, chainable components. Follow existing conventions in this app.
-- Use the `search-docs` tool for official documentation on Artisan commands, code examples, testing, relationships, and idiomatic practices. If `search-docs` is unavailable, refer to https://filamentphp.com/docs.
-
-### Artisan
-
-- Always use Filament-specific Artisan commands to create files. Find available commands with the `list-artisan-commands` tool, or run `php artisan --help`.
-- Inspect required options before running, and always pass `--no-interaction`.
-
-### Patterns
-
-Always use static `make()` methods to initialize components. Most configuration methods accept a `Closure` for dynamic values.
-
-Use `Get $get` to read other form field values for conditional logic:
-
-<code-snippet name="Conditional form field visibility" lang="php">
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
-use Filament\Schemas\Components\Utilities\Get;
-
-Select::make('type')
-    ->options(CompanyType::class)
-    ->required()
-    ->live(),
-
-TextInput::make('company_name')
-    ->required()
-    ->visible(fn (Get $get): bool => $get('type') === 'business'),
-
-</code-snippet>
-
-Use `Set $set` inside `->afterStateUpdated()` on a `->live()` field to mutate another field reactively. Prefer `->live(onBlur: true)` on text inputs to avoid per-keystroke updates:
-
-<code-snippet name="Reactive field update" lang="php">
-use Filament\Schemas\Components\Utilities\Set;
-use Illuminate\Support\Str;
-
-TextInput::make('title')
-    ->required()
-    ->live(onBlur: true)
-    ->afterStateUpdated(fn (Set $set, ?string $state) => $set(
-        'slug',
-        Str::slug($state ?? ''),
-    )),
-
-TextInput::make('slug')
-    ->required(),
-
-</code-snippet>
-
-Compose layout by nesting `Section` and `Grid`. Children need explicit `->columnSpan()` or `->columnSpanFull()`:
-
-<code-snippet name="Section and Grid layout" lang="php">
-use Filament\Schemas\Components\Grid;
-use Filament\Schemas\Components\Section;
-
-Section::make('Details')
-    ->schema([
-        Grid::make(2)->schema([
-            TextInput::make('first_name')
-                ->columnSpan(1),
-            TextInput::make('last_name')
-                ->columnSpan(1),
-            TextInput::make('bio')
-                ->columnSpanFull(),
-        ]),
-    ]),
-
-</code-snippet>
-
-Use `Repeater` for inline `HasMany` management. `->relationship()` with no args binds to the relationship matching the field name:
-
-<code-snippet name="Repeater for HasMany" lang="php">
-use Filament\Forms\Components\Repeater;
-
-Repeater::make('qualifications')
-    ->relationship()
-    ->schema([
-        TextInput::make('institution')
-            ->required(),
-        TextInput::make('qualification')
-            ->required(),
-    ])
-    ->columns(2),
-
-</code-snippet>
-
-Use `state()` with a `Closure` to compute derived column values:
-
-<code-snippet name="Computed table column value" lang="php">
-use Filament\Tables\Columns\TextColumn;
-
-TextColumn::make('full_name')
-    ->state(fn (User $record): string => "{$record->first_name} {$record->last_name}"),
-
-</code-snippet>
-
-Use `SelectFilter` for enum or relationship filters, and `Filter` with a `->query()` closure for custom logic:
-
-<code-snippet name="Table filters" lang="php">
-use Filament\Tables\Filters\Filter;
-use Filament\Tables\Filters\SelectFilter;
-use Illuminate\Database\Eloquent\Builder;
-
-SelectFilter::make('status')
-    ->options(UserStatus::class),
-
-SelectFilter::make('author')
-    ->relationship('author', 'name'),
-
-Filter::make('verified')
-    ->query(fn (Builder $query) => $query->whereNotNull('email_verified_at')),
-
-</code-snippet>
-
-Actions are buttons that encapsulate optional modal forms and behavior:
-
-<code-snippet name="Action with modal form" lang="php">
-use Filament\Actions\Action;
-
-Action::make('updateEmail')
-    ->schema([
-        TextInput::make('email')
-            ->email()
-            ->required(),
-    ])
-    ->action(fn (array $data, User $record) => $record->update($data)),
-
-</code-snippet>
-
-### Testing
-
-Testing setup (requires `pestphp/pest-plugin-livewire` in `composer.json`):
-
-- Always call `$this->actingAs(User::factory()->create())` before testing panel functionality.
-- For edit pages, pass `['record' => $user->id]`, use `->call('save')` (not `->call('create')`), and do not assert `->assertRedirect()` (edit pages do not redirect after save).
-
-<code-snippet name="Table test" lang="php">
-use function Pest\Livewire\livewire;
-
-livewire(ListUsers::class)
-    ->assertCanSeeTableRecords($users)
-    ->searchTable($users->first()->name)
-    ->assertCanSeeTableRecords($users->take(1))
-    ->assertCanNotSeeTableRecords($users->skip(1));
-
-</code-snippet>
-
-<code-snippet name="Create resource test" lang="php">
-use function Pest\Laravel\assertDatabaseHas;
-
-livewire(CreateUser::class)
-    ->fillForm([
-        'name' => 'Test',
-        'email' => 'test@example.com',
-    ])
-    ->call('create')
-    ->assertNotified()
-    ->assertHasNoFormErrors()
-    ->assertRedirect();
-
-assertDatabaseHas(User::class, [
-    'name' => 'Test',
-    'email' => 'test@example.com',
-]);
-
-</code-snippet>
-
-<code-snippet name="Edit resource test" lang="php">
-livewire(EditUser::class, ['record' => $user->id])
-    ->fillForm(['name' => 'Updated'])
-    ->call('save')
-    ->assertNotified()
-    ->assertHasNoFormErrors();
-
-assertDatabaseHas(User::class, [
-    'id' => $user->id,
-    'name' => 'Updated',
-]);
-
-</code-snippet>
-
-<code-snippet name="Testing validation" lang="php">
-livewire(CreateUser::class)
-    ->fillForm([
-        'name' => null,
-        'email' => 'invalid-email',
-    ])
-    ->call('create')
-    ->assertHasFormErrors([
-        'name' => 'required',
-        'email' => 'email',
-    ])
-    ->assertNotNotified();
-
-</code-snippet>
-
-Use `->callAction(DeleteAction::class)` for page actions, or `->callAction(TestAction::make('name')->table($record))` for table actions:
-
-<code-snippet name="Calling actions" lang="php">
-use Filament\Actions\Testing\TestAction;
-
-livewire(ListUsers::class)
-    ->callAction(TestAction::make('promote')->table($user), [
-        'role' => 'admin',
-    ])
-    ->assertNotified();
-
-</code-snippet>
-
-### Correct Namespaces
-
-- Form fields (`TextInput`, `Select`, `Repeater`, etc.): `Filament\Forms\Components\`
-- Infolist entries (`TextEntry`, `IconEntry`, etc.): `Filament\Infolists\Components\`
-- Layout components (`Grid`, `Section`, `Fieldset`, `Tabs`, `Wizard`, etc.): `Filament\Schemas\Components\`
-- Schema utilities (`Get`, `Set`, etc.): `Filament\Schemas\Components\Utilities\`
-- Table columns (`TextColumn`, `IconColumn`, etc.): `Filament\Tables\Columns\`
-- Table filters (`SelectFilter`, `Filter`, etc.): `Filament\Tables\Filters\`
-- Actions (`DeleteAction`, `CreateAction`, etc.): `Filament\Actions\`. Never use `Filament\Tables\Actions\`, `Filament\Forms\Actions\`, or any other sub-namespace for actions.
-- Icons: `Filament\Support\Icons\Heroicon` enum (e.g., `Heroicon::PencilSquare`)
-
-### Common Mistakes
-
-- **Never assume public file visibility.** File visibility is `private` by default. Always use `->visibility('public')` when public access is needed.
-- **Never assume full-width layout.** `Grid`, `Section`, `Fieldset`, and `Repeater` do not span all columns by default.
-- **Use `Select::make('author_id')->relationship('author', 'name')` for BelongsTo fields.** `BelongsToSelect` does not exist in v4.
-- **`Repeater` uses `->schema()`, not `->fields()`.**
-- **Never add `->dehydrated(false)` to fields that need to be saved.** It strips the value from form state before `->action()` or the save handler runs. Only use it for helper/UI-only fields.
-- **Use correct property types when overriding `Page`, `Resource`, and `Widget` properties.** These properties have union types or changed modifiers that must be preserved:
-  - `$navigationIcon`: `protected static string | BackedEnum | null` (not `?string`)
-  - `$navigationGroup`: `protected static string | UnitEnum | null` (not `?string`)
-  - `$view`: `protected string` (not `protected static string`) on `Page` and `Widget` classes
-
-=== filament/blueprint/core rules ===
-
-## Filament Blueprint
-
-You are writing Filament v5 implementation plans. Plans must be specific enough
-that an implementing agent can write code without making decisions.
-
-**Start here**: Read
-`/vendor/filament/blueprint/resources/markdown/planning/overview.md` for plan format,
-required sections, and what to clarify with the user before planning.
+# Pest
+
+- This project uses Pest. Create tests with `vendor/bin/sail artisan make:test --pest {name}`.
+- Do not include the test suite directory in `{name}`. Use `SomeFeatureTest`, not `Feature/SomeFeatureTest`.
+- Read the `testing-best-practices` skill for guidance on coverage, naming, structure, dependency isolation, and review.
+- Do not delete tests or test files without approval. They are part of the application.
+
+## Running Tests
+
+- Run the narrowest set of tests that covers the change. Pass a file path or `--filter=testName` to `vendor/bin/sail artisan test --compact`.
+- Rerun a test after each change to it.
+- Run `vendor/bin/sail bin pest` to call the test runner directly. It accepts the same file path and `--filter=testName` arguments.
+- After the feature tests pass, ask the user to run the complete suite with `vendor/bin/sail artisan test --compact`.
 
 </laravel-boost-guidelines>

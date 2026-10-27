@@ -160,16 +160,22 @@ test('licensable claims reach the App as strings', function () use ($createActiv
     $this->assertSame('42', $claims['licensable_id']);
 });
 
-test('issue rejects extra claims overriding reserved claims', function () use ($createActiveLicense): void {
+test('issue rejects extra claims overriding reserved claims', function (string $reservedClaim) use ($createActiveLicense): void {
     [, $license] = $createActiveLicense();
     $usage = new LicenseUsage(['usage_fingerprint' => 'paseto-fp']);
 
     $this->expectException(RuntimeException::class);
 
     (new WilsonPasetoTokenService)->issue($license, $usage, [
-        'extra_claims' => ['license_id' => 'tampered'],
+        'extra_claims' => [$reservedClaim => 'tampered'],
     ]);
-});
+})->with([
+    'package claim' => 'license_id',
+    'paseto claim' => 'exp',
+    // vendor 2.3.0 的 RESERVED_CLAIMS 新增
+    'audience' => 'aud',
+    'token id' => 'jti',
+]);
 
 test('token signed with one signing key fails under a rotated key', function () use ($createActiveLicense, $activeSigningKey, $parseClaims): void {
     [, $license] = $createActiveLicense();

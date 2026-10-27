@@ -16,17 +16,18 @@ use ParagonIE\Paseto\Protocol\Version4;
  * 在 `issue()` 階段支援透過 `$options['extra_claims']` 注入自訂 PASETO claims。
  *
  * 為什麼需要覆寫：
- *   vendor 版本的 `PasetoTokenService::issue()` 不接受 extra claims，$options
- *   只處理 `ttl_days` 與 `issuer`。我們需要在 token payload 加入 `wrapped_content_key`
- *   claim（由 Ed25519 signing key 簽章保護），因此必須在 `Builder::setClaims()` 被
- *   呼叫前介入。由於 vendor 沒提供 protected 擴充點，這裡採「完整複製 parent::issue()
- *   邏輯並插入 extra claim 合併」的策略。
+ *   我們需要在 token payload 加入 `wrapped_content_key` claim（由 Ed25519 signing key
+ *   簽章保護），並讓 token 的 exp 不晚於授權到期日。vendor 2.3.0 起 `issue()` 雖以
+ *   `claims` option 支援應用 claims，但合併邏輯是 private、exp 也沒有擴充點，因此仍採
+ *   「完整複製 parent::issue() 邏輯並就地插入」的策略。呼叫端維持用 `extra_claims`；
+ *   vendor 的 `claims` option 在本覆寫中**不生效**。
  *
  * ⚠️ 升級 masterix21/laravel-licensing 時務必重新對齊 parent::issue()。
- *    對齊版本：vendor 2.2.1
+ *    對齊版本：vendor 2.3.0
  *    與 parent 的差異共三處，皆已就地標註「新增」：
  *      1. `$expiration` 以 `$license->expires_at` 夾住上界
- *      2. `$claims = ...` 後方的 extra_claims 合併區塊
+ *      2. `$claims = ...` 後方的 extra_claims 合併區塊（對應 vendor 的
+ *         `withApplicationClaims()`，保留字清單與其 RESERVED_CLAIMS 一致）
  *      3. `licensable_id` claim 轉為字串
  *    （signing key 建構已對齊 vendor 2.0.1 起的 seed-derived 寫法 buildSecretKey()。）
  *
@@ -119,7 +120,7 @@ class WilsonPasetoTokenService extends PasetoTokenService
                 'kid', 'license_id', 'license_key_hash', 'usage_fingerprint',
                 'status', 'max_usages', 'force_online_after', 'licensable_type',
                 'licensable_id', 'license_expires_at', 'grace_until',
-                'iat', 'nbf', 'exp', 'sub', 'iss',
+                'iat', 'nbf', 'exp', 'sub', 'iss', 'aud', 'jti',
             ];
             foreach ($extraClaims as $key => $value) {
                 if (in_array($key, $reservedKeys, true)) {
