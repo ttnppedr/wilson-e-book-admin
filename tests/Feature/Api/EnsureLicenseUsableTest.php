@@ -24,9 +24,8 @@ use Tests\Concerns\MocksLicenseTokenVerifier;
 
 uses(MocksLicenseTokenVerifier::class, RefreshDatabase::class);
 
-/** 掛了 EnsureLicenseUsable 的三個內容端點 */
+/** 掛了 EnsureLicenseUsable 的內容清單端點（分類圖片端點需要實際分類，另見 `category image endpoint is guarded too`） */
 $contentEndpoints = [
-    'wordwalls' => '/api/v1/wordwalls',
     'wordwall-categories' => '/api/v1/wordwall-categories',
 ];
 
@@ -94,7 +93,7 @@ test('content endpoint writes the expired status back and leaves an audit trail'
         'expires_at' => now()->subMinute(),
     ]);
 
-    $this->getJsonWithToken('/api/v1/wordwalls')->assertStatus(401);
+    $this->getJsonWithToken('/api/v1/wordwall-categories')->assertStatus(401);
 
     $this->assertSame(LicenseStatus::Expired, $license->refresh()->status);
 
@@ -120,7 +119,7 @@ test('repeated content requests write the expired audit only once', function ():
     ]);
 
     foreach (range(1, 3) as $ignored) {
-        $this->getJsonWithToken('/api/v1/wordwalls')->assertStatus(401);
+        $this->getJsonWithToken('/api/v1/wordwall-categories')->assertStatus(401);
     }
 
     $license = $this->bearerTokenLicense();

@@ -123,7 +123,5 @@ test('an app holding a legacy token can still validate online', function (string
 })->with('legacy tokens');
 
 test('an app holding a legacy token can still load content', function (string $tokenName) use ($fixture): void {
-    foreach (['/api/v1/wordwalls', '/api/v1/wordwall-categories'] as $url) {
-        $this->withToken($fixture[$tokenName])->getJson($url)->assertOk();
-    }
+    $this->withToken($fixture[$tokenName])->getJson('/api/v1/wordwall-categories')->assertOk();
 })->with('legacy tokens');

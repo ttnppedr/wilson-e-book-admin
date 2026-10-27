@@ -16,7 +16,7 @@ test('web responses carry the noindex header', function () {
 });
 
 test('api error responses also carry the noindex header', function () {
-    $this->getJson('/api/v1/wordwalls')
+    $this->getJson('/api/v1/wordwall-categories')
         ->assertStatus(401)
         ->assertHeader('X-Robots-Tag', 'noindex, nofollow');
 });

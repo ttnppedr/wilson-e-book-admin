@@ -4,7 +4,6 @@ use App\Http\Controllers\Api\LicenseController;
 use App\Http\Controllers\Api\ValidateController;
 use App\Http\Controllers\Api\WordwallCategoryController;
 use App\Http\Controllers\Api\WordwallCategoryImageController;
-use App\Http\Controllers\Api\WordwallController;
 use App\Http\Middleware\EnsureLicenseUsable;
 use App\Http\Middleware\SetResponseEtag;
 use App\Http\Middleware\VerifyBearerToken;
@@ -33,15 +32,6 @@ Route::prefix('licensing/v1')
 // （永久授權 token TTL 為 100 年）。刻意不掛在 validate 上，見該 middleware 註解。
 Route::prefix('v1')
     ->group(function (): void {
-        Route::get('wordwalls', WordwallController::class)
-            ->middleware([
-                'throttle:api-wordwall',
-                VerifyBearerToken::class,
-                EnsureLicenseUsable::class,
-                SetResponseEtag::class,
-            ])
-            ->name('v1.wordwalls');
-
         Route::get('wordwall-categories', WordwallCategoryController::class)
             ->middleware([
                 'throttle:api-wordwall',

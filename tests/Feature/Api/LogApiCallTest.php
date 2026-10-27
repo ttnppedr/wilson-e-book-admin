@@ -61,7 +61,7 @@ $lastLogEntry = function (string $logPath): array {
 test('get success omits response body and masks sensitive headers', function () use ($lastLogEntry): void {
     $this->acceptAnyBearerToken();
 
-    $this->getJsonWithToken('/api/v1/wordwalls')->assertOk();
+    $this->getJsonWithToken('/api/v1/wordwall-categories')->assertOk();
 
     $entry = $lastLogEntry->call($this, $this->logPath);
     $this->assertSame(200, $entry['status']);
@@ -75,14 +75,14 @@ test('get success omits response body and masks sensitive headers', function () 
 test('get 304 omits response body', function () use ($lastLogEntry): void {
     $this->acceptAnyBearerToken();
 
-    $first = $this->getJsonWithToken('/api/v1/wordwalls');
+    $first = $this->getJsonWithToken('/api/v1/wordwall-categories');
     $etag = $first->headers->get('ETag');
     $this->assertNotNull($etag);
 
     $this->withHeaders([
         'Authorization' => 'Bearer stub-bearer-token',
         'If-None-Match' => $etag,
-    ])->getJson('/api/v1/wordwalls')->assertStatus(304);
+    ])->getJson('/api/v1/wordwall-categories')->assertStatus(304);
 
     $entry = $lastLogEntry->call($this, $this->logPath);
     $this->assertSame(304, $entry['status']);
@@ -91,7 +91,7 @@ test('get 304 omits response body', function () use ($lastLogEntry): void {
 
 test('error response body is still logged', function () use ($lastLogEntry): void {
     // 不帶 Authorization → VerifyBearerToken 回 401，屬 >= 400 應保留完整 body
-    $this->getJson('/api/v1/wordwalls')->assertStatus(401);
+    $this->getJson('/api/v1/wordwall-categories')->assertStatus(401);
 
     $entry = $lastLogEntry->call($this, $this->logPath);
     $this->assertSame(401, $entry['status']);

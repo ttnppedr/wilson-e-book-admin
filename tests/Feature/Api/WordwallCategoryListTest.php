@@ -316,12 +316,16 @@ test('rate limit blocks after 60 requests', function () use ($categoriesUrl): vo
     $this->assertNotNull($response->headers->get('Retry-After'));
 });
 
-test('rate limit is independent from wordwalls endpoint', function () use ($categoriesUrl): void {
-    // 兩端點各自獨立計數：打滿 categories 60 次後，wordwalls 仍不受影響。
+test('rate limit is independent from the category image endpoint', function () use ($categoriesUrl): void {
+    // limiter key 帶 path，兩端點各自獨立計數：打滿 categories 60 次後，分類圖片端點仍不受影響。
+    $category = WordwallCategory::factory()->create(['image_path' => null]);
+
     for ($i = 1; $i <= 60; $i++) {
         $this->getJsonWithToken($categoriesUrl);
     }
 
     $this->getJsonWithToken($categoriesUrl)->assertStatus(429);
-    $this->getJsonWithToken('/api/v1/wordwalls')->assertOk();
+    $this->getJsonWithToken("/api/v1/wordwall-categories/{$category->getKey()}/image")
+        ->assertStatus(404)
+        ->assertJsonPath('error.code', 'IMAGE_NOT_FOUND');
 });
