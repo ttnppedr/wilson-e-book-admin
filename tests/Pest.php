@@ -23,6 +23,12 @@ use Tests\TestCase;
 
 pest()->extend(TestCase::class)->in('Feature');
 
+// TIA 只追蹤執行到的 PHP，Markdown 變更須明確宣告才會重跑同步測試
+pest()->tia()->watch([
+    'CLAUDE.md' => 'tests/Unit/AgentsMdSyncTest.php',
+    'AGENTS.md' => 'tests/Unit/AgentsMdSyncTest.php',
+]);
+
 /*
 |--------------------------------------------------------------------------
 | Functions
