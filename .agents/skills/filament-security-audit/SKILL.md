@@ -155,13 +155,14 @@ where a per-record guard exists but the matching bulk guard does not.
   `grep -rnE "function (deleteAny|forceDeleteAny|restoreAny)\(" app/Policies`.
 - **Flag if**: the per-record method does real work **and** a matching bulk
   action exists **but** the policy has no corresponding `deleteAny()` /
-  `forceDeleteAny()` / `restoreAny()`.
+  `forceDeleteAny()` / `restoreAny()`, and no equivalent action-level or
+  individual-record authorization prevents the denied operations.
 - **Fix**: record-independent check (role/permission gate) → copy the same logic
   into the `*Any()` method. Record-dependent check (ownership) → add
   `->authorizeIndividualRecords('delete')` (resp. `'forceDelete'`, `'restore'`)
   to the bulk action so Filament re-checks per record.
-- **Why**: bulk actions authorize the whole batch once against `*Any()`, never
-  per-record — a missing `*Any()` fails open. (With the panel's
+- **Why**: by default, bulk actions authorize the whole batch once against
+  `*Any()`, not per-record — a missing `*Any()` fails open. (With the panel's
   `->strictAuthorization()` setting enabled a missing `*Any()` throws instead —
   N/A there.)
 - **Docs**:
@@ -177,11 +178,11 @@ authorization. A _missing_ policy is not the trigger.
 - **Search**: `grep -rn "ImportAction::make" app` and open the referenced
   importer. For completeness, `grep "extends Importer"` catches imports run
   outside `ImportAction` (commands, queued re-runs).
-- **Flag if**: the model's policy has a real `create()` / `update()` **but** the
-  importer contains no `can(` / `Gate::` / `authorize(` / `abort` check in any
-  of its overridable hooks (`resolveRecord()`, `beforeValidate`, `beforeFill`,
-  `beforeSave`, `beforeCreate`, `beforeUpdate`) — authorizing in any one is
-  safe.
+- **Flag if**: a reachable importer create/update lacks authorization equivalent
+  to the model's corresponding policy. Check each branch separately: common
+  hooks can protect both; `beforeCreate()` and `beforeUpdate()` protect only
+  their respective branches. Verify the correct ability/record is denied before
+  writing.
 - **Fix**: record-independent → copy the check into the hook; record-dependent
   (update) → `abort_unless(auth()->user()->can('update', $this->record), 403)`;
   new records (create) →
@@ -192,23 +193,23 @@ authorization. A _missing_ policy is not the trigger.
 - **Docs**:
   https://filamentphp.com/docs/5.x/actions/import#per-record-authorization
 
-### A3. Actions authorize via response methods, not `can*()` overrides — `[Site]` `[Conditional]`
+### A3. Page and action authorization can bypass `can*()` overrides — `[Site]` `[Conditional]`
 
 - **Search**:
   `grep -rnE "function can(Create|Edit|View|ViewAny|Delete|DeleteAny|ForceDelete|ForceDeleteAny|Restore|RestoreAny|Reorder|Replicate|Attach|Detach|DetachAny|Associate|Dissociate|DissociateAny)\(" app/Filament`.
-- **Flag if**: an override shows authorization intent in its body — references
-  `auth()`, `$user`, `Gate`, `->can(`, or `abort` — and that rule is not also
-  enforced by a policy. (Skip static returns with no such signal.)
+- **Flag if**: a page/action bypasses a `can*()` override containing auth logic
+  (`auth()`, `$user`, `Gate`, `->can(`, or `abort`), with no equivalent policy,
+  authorization-response override, or server-side guard. Skip static returns
+  with no such signal.
 - **Fix**: move the logic into the model policy, or override the matching
   `get*AuthorizationResponse()` method (which must return an
   `Illuminate\Auth\Access\Response` — `Response::allow()` / `Response::deny()` —
   not a bool).
-- **Why**: `can*()` gates page access, navigation, and global search, but
-  record/bulk **actions** and relation managers authorize via
-  `get*AuthorizationResponse()` directly — so the page looks gated while the
-  action leaks.
-- **Docs**:
-  https://filamentphp.com/docs/5.x/upgrade-guide#overriding-the-can-authorization-methods-on-a-resource-relationmanager-or-managerelatedrecords-class
+- **Why**: Create/Edit/View pages, record/bulk actions, and relation managers
+  authorize through `get*AuthorizationResponse()`. `can*()` still participates
+  in resource access, navigation, and global-search links; it does not alone
+  guard those execution paths.
+- **Docs**: https://filamentphp.com/docs/5.x/resources/overview#authorization
 
 ### A4. Inline editable columns bypass the `update()` policy — `[Site]` `[Conditional]`
 
@@ -219,11 +220,12 @@ an inline column saves to it without an equivalent guard.
   across all source roots. If tables build columns from custom subclasses, also
   `grep -rnE "extends (Toggle|Select|TextInput|Checkbox)Column" app`.
 - **Flag if**: the model policy has a meaningful `update()` **and** the column
-  has no `->disabled()` closure carrying an auth check. Static
-  `->disabled(true)` and `->rules(...)` (validation, not authorization) do not
-  count.
-- **Safe when**: no meaningful `update()` policy (mark `N/A`), or the column
-  carries its own auth inside `->updateStateUsing()` / `->beforeStateUpdated()`.
+  permits updates without an equivalent authorization check. Validation via
+  `->rules(...)` alone does not count as authorization.
+- **Safe when**: no meaningful `update()` policy (mark `N/A`), or the column is
+  always disabled (`->disabled(true)`), disables updates for unauthorized users,
+  or carries its own auth inside `->updateStateUsing()` /
+  `->beforeStateUpdated()`.
 - **Fix**: record-independent →
   `->disabled(fn (): bool => ! auth()->user()->can('update_posts'))`;
   record-dependent →
@@ -304,17 +306,20 @@ non-provider field can read provider-backed content if its path is known.
 - **Search**:
   1. **Group all upload-storing fields by resolved disk** —
      `grep -rnE "(FileUpload|SpatieMediaLibraryFileUpload)::make" app` and
-     `grep -rn "RichEditor::make" app`, resolving each field's disk via
-     `->disk(...)` or `->fileAttachmentsDisk(...)` → panel default →
-     `config('filament.default_filesystem_disk')` → `FILESYSTEM_DISK`. Drop:
+     `grep -rn "RichEditor::make" app`. Resolve the effective `getDiskName()`
+     (FileUpload) or `getFileAttachmentsDiskName()` (RichEditor), including
+     per-field settings, `configureUsing()` defaults, and attachment providers.
+     The fallback is `config('filament.default_filesystem_disk')`
+     (`FILESYSTEM_DISK`, default `local`). Account for visibility remapping:
+     FileUpload falls back from `public` to `local` when explicitly private;
+     editor attachments fall back from `local` to `public` when public. Drop:
      - Public / web-served disks (already addressable — no escalation).
      - Disks single-user / single-tenant **by infrastructure** — Flysystem
        `root` bound per tenant at framework level: static in
-       `config/filesystems.php`, dynamic via
-       `Storage::set('uploads', ['root' => "/tenants/{$tenantId}"])` in a
-       service provider / middleware, or a tenancy package (Spatie
-       multi-tenancy, Stancl/Tenancy). App-layer prefixing on a shared root does
-       NOT count — tampering bypasses string prefixes.
+       `config/filesystems.php`, dynamically resolved in a service provider /
+       middleware, or managed by a tenancy package (Spatie multi-tenancy,
+       Stancl/Tenancy). Verify the effective adapter root. App-layer prefixing
+       on a shared root does NOT count — tampering bypasses string prefixes.
 
   2. **Find disclosure targets per disk** — any file on the disk root worth
      exfiltrating, regardless of which mechanism uploaded it:
@@ -350,9 +355,9 @@ non-provider field can read provider-backed content if its path is known.
          check `registerRichContent(..., ...)->fileAttachmentProvider(...)` in
          the model file (`grep -rn "fileAttachmentProvider(" app/Models`
          enumerates registered providers). Spatie's `MediaLibrary` or any custom
-         provider that re-validates ownership protects the editor. **Action /
-         page schemas with no model backing have nowhere to register a
-         provider** — always unprotected.
+         provider that re-validates ownership protects the editor. Model-less
+         schemas can also be protected by `->getFileAttachmentUrlUsing(...)`,
+         but only if it enforces ownership on every rendering path.
        - **No tampering protection** — no
          `->preventFileAttachmentPathTampering(true)` on the field, and no
          global `RichEditor::configureUsing(...)` default.
@@ -388,9 +393,9 @@ non-provider field can read provider-backed content if its path is known.
      - **Reactive / live updates** — `->afterStateUpdated(...)` or `->live()`
        callbacks writing to the field from elsewhere.
 
-     Encode each allowed pattern in an `allowFilePathUsing:` closure (e.g.
-     `str_starts_with($file, 'templates/')` for a template directory; a
-     membership check on a specific Spatie media collection used by templates).
+     Allow only strict membership in trusted paths or ownership-checked media.
+     Plain directory-prefix checks are unsafe because later normalization can
+     resolve `..` outside the directory.
 
 - **Flag if**: a disk has targets, unprotected writers (of either type), and a
   gradient or broader audience. One §2 entry per disk, listing every unprotected
@@ -405,9 +410,9 @@ non-provider field can read provider-backed content if its path is known.
      and/or
      `RichEditor::configureUsing(fn (RichEditor $component) => $component->preventFileAttachmentPathTampering())`.
   2. For **every** fill source from step 5, add a per-field exclusion:
-     `->preventFilePathTampering(allowFilePathUsing: fn (string $file): bool => str_starts_with($file, 'templates/'))`
+     `->preventFilePathTampering(allowFilePathUsing: fn (string $file): bool => in_array($file, ['templates/default-avatar.png'], strict: true))`
      (or its RichEditor equivalent). Enumerate each with file:line and the
-     specific allowed pattern.
+     specific trusted paths or ownership-checked source.
 
   **Step 2 is mandatory when step 5 found fill sources** — applying the global
   default alone will break fill-from-template / copy-from-another-record /
@@ -471,8 +476,7 @@ plain PHP text) are detected by content-sniffing and rejected.
   via finfo; the client-supplied Content-Type header is ignored. Laravel also
   blocks common PHP filename extensions, including on image/PHP polyglots; this
   is not a general safe-extension allowlist. Real-world impact tracks the
-  field's resolved disk (`->disk(...)` → panel default →
-  `config('filament.default_filesystem_disk')` → `FILESYSTEM_DISK`):
+  field's effective disk (resolve as in [B1]):
   - **Web-served disk** (`public` with `storage:link`, or anything Apache /
     Nginx executes from): RCE requires the upload to pass validation, be stored
     with an executable name, and reach a server configured to execute it. Public
@@ -489,11 +493,9 @@ plain PHP text) are detected by content-sniffing and rejected.
 
 - **Search**:
   `grep -rn "preserveFilenames\|getUploadedFileNameForStorageUsing" app`.
-- **Flag if**: used together with a `local`/`public` disk — resolve the disk in
-  order: the field's `->disk(...)`, then the panel's
-  `->defaultFilesystemDisk()`, then `config('filament.default_filesystem_disk')`
-  (defaults to `FILESYSTEM_DISK` → `local`) — and the actual validation, naming,
-  and server configuration allow an executable upload.
+- **Flag if**: used together with a `local`/`public` disk — resolve the field's
+  effective `getDiskName()` as in [B1] — and the actual validation, naming, and
+  server configuration allow an executable upload.
 - **Safe when**: the field targets a non-served disk (e.g. `->disk('s3')`), or
   keeps random storage names while storing originals separately with
   `->storeFileNamesIn(...)`. That method only records original names; it does
@@ -689,12 +691,12 @@ not applying one.
   classes under `app/Models/Scopes`, `app-modules/*/src/Models/Scopes`).
 - **Flag if**: (a) the query doesn't apply the ownership scope the policy/FK
   implies, or (b) a query-customisation site (`getEloquentQuery()` override,
-  `->modifyQueryUsing(...)`, a filter `query(...)` callback) calls a top-level
-  `->where(...)->orWhere(...)` not wrapped in `->where(function ($q) { ... })` —
-  Filament appends search/filter constraints _after_ your callback, so the
-  top-level `orWhere` escapes the surrounding `AND` group and leaks rows.
-  (Registered global scopes do **not** need this wrap: Laravel auto-groups
-  `or`-containing scope constraints into a nested `where`.)
+  table `->modifyQueryUsing(...)`, or filter callback) adds an ungrouped
+  `->where(...)->orWhere(...)` that actually bypasses a required access
+  predicate. Normal filter `query()` callbacks share a nested group; their ORs
+  can bypass sibling filters, not outer access constraints. Filter `baseQuery()`
+  and table callbacks modify the base query. Laravel also auto-groups
+  `or`-containing registered global-scope constraints.
 - **Fix**: missing-scope → `->modifyQueryUsing(...)`, override
   `getEloquentQuery()`, or add a global scope, and apply the same constraint in
   widgets. Unwrapped-OR → wrap the OR pair in
@@ -715,15 +717,18 @@ not applying one.
 - **Search**:
   `grep -rnE "(token|secret|password|api[_]?key|two_factor|ssn|tax_id|bank|iban|card_number|private_key|salary)" app/Models database/migrations`,
   plus any sensitive domain column and `$appends` accessors. Restrict to models
-  edited via a Filament Edit/View page or modal `EditAction`/`ViewAction`.
-- **Flag if**: the attribute isn't in `$hidden`, isn't excluded by a `$visible`
-  whitelist, and isn't stripped in `mutateFormDataBeforeFill()`.
-- **Fix**: add the column to `$hidden` (covers every path), or `unset()` it in
-  `mutateFormDataBeforeFill(array $data): array`. For modal
+  used by a Filament Edit/View page or modal `EditAction`/`ViewAction`.
+- **Flag if**: a sensitive attribute reaches client-visible state without an
+  intended disclosure. For the default form-fill path, check `$hidden`,
+  `$visible`, and `mutateFormDataBeforeFill()`; inspect custom copies
+  separately.
+- **Fix**: add the column to `$hidden` for default attribute serialization, or
+  `unset()` it in `mutateFormDataBeforeFill(array $data): array`. For modal
   `EditAction`/`ViewAction`, the scrub is `->mutateRecordDataUsing(...)`.
-- **Why**: Filament exposes all non-`$hidden` attributes to JavaScript via
-  Livewire model binding on Edit/View pages. This is _exposure_, not
-  mass-assignment — only attributes with a form field are editable.
+- **Why**: default form-backed Edit/View pages copy serializable attributes into
+  Livewire state; infolist-only views expose what their entries render. This is
+  _exposure_, not mass-assignment — only form fields are editable through the
+  default save path.
 - **Docs**:
   https://filamentphp.com/docs/5.x/resources/overview#protecting-model-attributes
 
@@ -785,21 +790,26 @@ not applying one.
   cross-tenant hole the moment one is added — flag it regardless.
 - **Docs**: https://filamentphp.com/docs/5.x/users/tenancy#tenancy-security
 
-### D5. `unique` / `exists` validation ignores the tenancy scope — `[Site]` `[Conditional]`
+### D5. Unscoped `unique` / `exists` validation crosses tenants — `[Site]` `[Conditional]`
 
 - **Search**: in tenant-enabled panels (`$isScopedToTenant !== false`),
   `grep -rnE "->(unique|exists)\(" app/Filament` on resource form fields; also
   `grep -rnE "['\"](unique|exists):" app/Filament` to catch the string-rule
-  forms (`->rules(['unique:...'])`, `Rule::unique(...)`), which bypass scopes
-  identically.
-- **Flag if**: a tenant-scoped resource uses `unique()` / `exists()` validation.
+  forms (`->rules(['unique:...'])`, `Rule::unique(...)`). Resolve the target
+  model/table and effective validation query, including `modifyRuleUsing`.
+- **Flag if**: validation is meant to be tenant-local but its effective query
+  can match another tenant's rows.
+- **Safe when**: explicit tenant constraints apply, or field `->exists()` uses a
+  model's registered tenancy scope through its automatically scoped Eloquent
+  query.
 - **Fix**: use `->scopedUnique()` / `->scopedExists()` (no-arg defaults to the
   component's model and field name; pass `model:` / `column:` only for a
   non-default table).
 - **Why**: Laravel's `unique`/`exists` query the DB directly without global
-  scopes, so cross-tenant data influences validation. Unscoped `exists` enables
-  cross-tenant reference binding; unscoped `unique` surfaces as false collisions
-  / "value taken elsewhere" disclosure.
+  scopes unless explicitly constrained. Field `unique()` does not automatically
+  apply the tenant scope. Unscoped `exists` enables cross-tenant reference
+  binding; unscoped `unique` surfaces as false collisions / "value taken
+  elsewhere" disclosure.
 - **Docs**:
   https://filamentphp.com/docs/5.x/users/tenancy#unique-and-exists-validation
 
