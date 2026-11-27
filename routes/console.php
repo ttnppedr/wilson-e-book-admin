@@ -27,7 +27,8 @@ if (config('licensing.scheduler.check_expirations.enabled', true)) {
 }
 
 /*
- * App 診斷紀錄保留期三個月：每日清除伺服器最後收到上傳早於 90 天的 session（連同事件）。
+ * App 診斷紀錄保留期三個月：每天半夜清除伺服器收到時間早於三個月的事件，以及因此
+ * 沒有事件的 session。時間一律以伺服器為準，不看裝置自報的時間。
  * 診斷資料量大且只在事後追查時有用，不清就只會無限成長。
  */
 Schedule::command('diagnostics:prune')
