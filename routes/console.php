@@ -25,3 +25,13 @@ if (config('licensing.scheduler.check_expirations.enabled', true)) {
         ->onOneServer()
         ->withoutOverlapping();
 }
+
+/*
+ * App 診斷紀錄保留期：每日清除最後事件早於 30 天的 session（連同事件）。
+ * 診斷資料量大且只在事後追查時有用，不清就只會無限成長。
+ */
+Schedule::command('diagnostics:prune')
+    ->dailyAt('03:00')
+    ->timezone(config('app.timezone'))
+    ->onOneServer()
+    ->withoutOverlapping();

@@ -99,6 +99,7 @@ return [
     'rate_limit' => [
         'activate_per_minute' => 10,
         'validate_per_minute' => 60,
+        'diagnostics_per_minute' => 60,
         'token_per_minute' => 20,
         'register_per_minute' => 30,
     ],

@@ -190,3 +190,73 @@ test('redaction reaches nested payload keys', function () use ($lastLogEntry): v
     $this->assertSame('[REDACTED]', $entry['request']['license_key']);
     $this->assertSame('[REDACTED]', $entry['request']['data']['token']);
 });
+
+test('diagnostics upload logs a summary instead of the whole event batch', function () use ($lastLogEntry): void {
+    $license = License::create([
+        'key_hash' => License::hashKey('LOGDIAG'.bin2hex(random_bytes(6))),
+        'status' => LicenseStatus::Active,
+        'activated_at' => now(),
+        'expires_at' => now()->addDays(30),
+        'max_usages' => 1,
+        'meta' => [],
+    ]);
+    LicenseUsage::create([
+        'license_id' => $license->getKey(),
+        'usage_fingerprint' => '9312d107016e2503',
+        'status' => UsageStatus::Active,
+        'registered_at' => now(),
+        'last_seen_at' => now(),
+        'client_type' => 'android',
+        'meta' => [],
+    ]);
+
+    $events = array_map(fn (int $seq): array => [
+        'seq' => $seq,
+        't' => '2026-11-27T00:59:53.123Z',
+        'cat' => 'tap',
+        'name' => 'marker-event-name',
+        'level' => 'info',
+        'data' => ['label' => 'marker-event-data'],
+    ], range(1, 50));
+
+    $this->postJson('/api/licensing/v1/diagnostics', [
+        'fingerprint' => '9312d107016e2503',
+        'session_id' => '0123456789abcdef0123456789abcdef',
+        'started_at' => '2026-11-27T00:55:10.123Z',
+        'app' => ['version' => '1.1.4+10', 'env' => 'staging', 'platform' => 'android'],
+        'events' => $events,
+    ])->assertStatus(202);
+
+    // 對整份 log 原文斷言：事件內容不論出現在哪個欄位都算失守。
+    $raw = file_get_contents($this->logPath);
+    $this->assertStringNotContainsString('marker-event-name', $raw);
+    $this->assertStringNotContainsString('marker-event-data', $raw);
+    $this->assertStringNotContainsString('9312d107016e2503', $raw, '指紋只記前綴');
+
+    $entry = $lastLogEntry->call($this, $this->logPath);
+    $this->assertSame([
+        'session_id' => '0123456789abcdef0123456789abcdef',
+        'fingerprint_prefix' => '9312d107',
+        'events_count' => 50,
+    ], $entry['request']);
+    $this->assertSame(['success' => true, 'accepted' => 50], $entry['response']);
+});
+
+test('a rejected diagnostics upload is summarised too', function () use ($lastLogEntry): void {
+    // 驗證失敗時 controller 不會走到寫入，但 body 一樣可能很大——摘要不能依賴請求成功。
+    $this->postJson('/api/licensing/v1/diagnostics', [
+        'fingerprint' => ['not', 'a', 'string'],
+        'session_id' => 'bad',
+        'events' => [['name' => 'marker-event-name']],
+    ])->assertStatus(422);
+
+    $raw = file_get_contents($this->logPath);
+    $this->assertStringNotContainsString('marker-event-name', $raw);
+
+    $entry = $lastLogEntry->call($this, $this->logPath);
+    $this->assertSame([
+        'session_id' => 'bad',
+        'fingerprint_prefix' => null,
+        'events_count' => 1,
+    ], $entry['request']);
+});

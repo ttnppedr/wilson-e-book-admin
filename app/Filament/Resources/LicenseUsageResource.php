@@ -2,9 +2,11 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Resources\DiagnosticSessions\DiagnosticSessionResource;
 use App\Filament\Resources\LicenseUsageResource\Pages;
 use App\Models\LicenseUsage;
 use App\Services\LicenseKeyGenerator;
+use Filament\Actions\Action;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Infolists\Components\TextEntry;
@@ -132,9 +134,24 @@ class LicenseUsageResource extends BaseLicenseUsageResource
                     ->label(__('laravel-licensing-filament-manager::common.actions.view')),
                 EditAction::make()
                     ->label(__('laravel-licensing-filament-manager::common.actions.edit')),
+                Action::make('diagnostics')
+                    ->label('診斷紀錄')
+                    ->icon('heroicon-o-bug-ant')
+                    ->color('gray')
+                    ->url(fn (LicenseUsage $record): string => static::diagnosticsUrl($record)),
             ])
             ->defaultSort('registered_at', 'desc')
             ->poll('60s');
+    }
+
+    /**
+     * 診斷紀錄清單頁，並帶入「此裝置」的指紋篩選。
+     */
+    public static function diagnosticsUrl(LicenseUsage $usage): string
+    {
+        return DiagnosticSessionResource::getUrl('index', [
+            'filters' => ['fingerprint' => ['value' => $usage->usage_fingerprint]],
+        ]);
     }
 
     public static function getPages(): array

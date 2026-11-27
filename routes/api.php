@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\DiagnosticsController;
 use App\Http\Controllers\Api\LicenseController;
 use App\Http\Controllers\Api\ValidateController;
 use App\Http\Controllers\Api\WordwallCategoryController;
@@ -15,6 +16,8 @@ use Illuminate\Support\Facades\Route;
 // 保護層級:
 //   - activate:rate limit（IP + fingerprint），token 由此端點簽發所以無從要求預先提供
 //   - validate:rate limit + VerifyBearerToken（要求回帶 activate 的 PASETO token）
+//   - diagnostics:rate limit（IP + fingerprint）。刻意不掛 VerifyBearerToken——要診斷的
+//     錯誤常發生在尚未授權的畫面；改由 DiagnosticRecorder 只保存指紋對得上既有席位的資料
 Route::prefix('licensing/v1')
     ->group(function (): void {
         Route::post('activate', [LicenseController::class, 'activate'])
@@ -24,6 +27,10 @@ Route::prefix('licensing/v1')
         Route::post('validate', [ValidateController::class, 'validateLicense'])
             ->middleware(['throttle:licensing-validate', VerifyBearerToken::class])
             ->name('licensing.validate');
+
+        Route::post('diagnostics', DiagnosticsController::class)
+            ->middleware('throttle:licensing-diagnostics')
+            ->name('licensing.diagnostics');
     });
 
 // 內容端點一律 VerifyBearerToken（驗簽章）+ EnsureLicenseUsable（驗授權現況）。

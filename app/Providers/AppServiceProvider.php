@@ -58,6 +58,10 @@ class AppServiceProvider extends ServiceProvider
             (int) config('licensing.rate_limit.validate_per_minute', 60)
         )->by($this->licensingRateLimitKey($request)));
 
+        RateLimiter::for('licensing-diagnostics', fn (Request $request) => Limit::perMinute(
+            (int) config('licensing.rate_limit.diagnostics_per_minute', 60)
+        )->by($this->licensingRateLimitKey($request)));
+
         // key 帶上 path：讓 /v1/wordwall-categories 與每個 /v1/wordwall-categories/{id}/image
         // 各自有獨立的 60/min 配額，避免 App 抓完分類清單後逐張載圖、背景刷新時互相排擠額度。
         RateLimiter::for('api-wordwall', fn (Request $request) => Limit::perMinute(60)
@@ -66,9 +70,15 @@ class AppServiceProvider extends ServiceProvider
 
     /**
      * 為 licensing API rate limiter 組出 IP + fingerprint 複合鍵。
+     *
+     * fingerprint 還沒經過驗證（throttle 排在 controller 之前），client 可以送陣列；
+     * 直接轉字串會觸發「Array to string conversion」而回 500，所以非字串一律當空值，
+     * 讓請求照常走到 controller 的驗證並回 422。
      */
     private function licensingRateLimitKey(Request $request): string
     {
-        return sha1($request->ip().'|'.(string) $request->input('fingerprint', ''));
+        $fingerprint = $request->input('fingerprint');
+
+        return sha1($request->ip().'|'.(is_scalar($fingerprint) ? (string) $fingerprint : ''));
     }
 }

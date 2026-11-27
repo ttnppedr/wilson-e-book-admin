@@ -39,6 +39,19 @@ class LogApiCall
 
     private const REDACTED_PLACEHOLDER = '[REDACTED]';
 
+    /**
+     * 診斷上傳端點：request body 是最多 500 筆事件（上限約 512 KB），而且同一批
+     * 會因 App 重試而重複送達，事件本身也已存進 `diagnostic_events`。照一般規則
+     * 全量落地只會把 api log 灌爆，所以這條路徑只記摘要。
+     *
+     * 以 path 而非 route name 判斷：被 throttle 擋下、驗證失敗或 method 不符時
+     * 同樣要生效，不能依賴 controller 有沒有執行到。
+     */
+    private const DIAGNOSTICS_PATH = 'api/licensing/v1/diagnostics';
+
+    /** 診斷摘要中指紋只留前綴，足以對到裝置又不必整串落地 */
+    private const FINGERPRINT_PREFIX_LENGTH = 8;
+
     /** `license_key_hash_prefix` 取 key_hash 的前綴長度 */
     private const KEY_HASH_PREFIX_LENGTH = 12;
 
@@ -88,6 +101,10 @@ class LogApiCall
      */
     private function buildRequestPayload(Request $request): array
     {
+        if ($request->is(self::DIAGNOSTICS_PATH)) {
+            return $this->summarizeDiagnostics($request);
+        }
+
         $payload = $this->redact($request->all());
 
         $licenseKey = $request->input('license_key');
@@ -100,6 +117,29 @@ class LogApiCall
         }
 
         return $payload;
+    }
+
+    /**
+     * 診斷上傳只記「哪個裝置、哪個 session、送了幾筆」。
+     *
+     * 這個端點免驗證，欄位型別不可信（可能是陣列或超長字串），所以每個值都先
+     * 確認是字串並截斷後才寫入。
+     *
+     * @return array{session_id: string|null, fingerprint_prefix: string|null, events_count: int}
+     */
+    private function summarizeDiagnostics(Request $request): array
+    {
+        $sessionId = $request->input('session_id');
+        $fingerprint = $request->input('fingerprint');
+        $events = $request->input('events');
+
+        return [
+            'session_id' => is_string($sessionId) ? substr($sessionId, 0, 32) : null,
+            'fingerprint_prefix' => is_string($fingerprint)
+                ? substr($fingerprint, 0, self::FINGERPRINT_PREFIX_LENGTH)
+                : null,
+            'events_count' => is_array($events) ? count($events) : 0,
+        ];
     }
 
     /**
