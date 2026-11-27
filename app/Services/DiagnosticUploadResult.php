@@ -5,8 +5,9 @@ namespace App\Services;
 /**
  * 一次診斷上傳的處理結果。
  *
- * 回應給 App 的只有 `accepted`；其餘欄位寫進 api log，讓「App 說有上傳、後台卻
- * 沒資料」事後查得出原因——`accepted: 0` 有三種成因，光看回應分不出來。
+ * 回應給 App 的只有 `accepted` 與 `recognized()`；其餘欄位寫進 api log，讓「App
+ * 說有上傳、後台卻沒資料」事後查得出原因——`accepted: 0` 有三種成因，回應只區分
+ * 得出「指紋不認得」這一種。
  */
 final readonly class DiagnosticUploadResult
 {
@@ -30,4 +31,13 @@ final readonly class DiagnosticUploadResult
         public int $accepted = 0,
         public array $context = [],
     ) {}
+
+    /**
+     * 伺服器認不認得這個指紋。App 以此判斷紀錄是否真的有人收下：不認得時
+     * （例如席位已在後台刪除）應保留本機紀錄，而不是當成已送達刪掉。
+     */
+    public function recognized(): bool
+    {
+        return $this->outcome !== self::OUTCOME_UNKNOWN_FINGERPRINT;
+    }
 }

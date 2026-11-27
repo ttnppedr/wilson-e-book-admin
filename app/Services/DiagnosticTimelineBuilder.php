@@ -38,17 +38,25 @@ class DiagnosticTimelineBuilder
     private const TITLE_MAX_LENGTH = 160;
 
     /**
-     * 已知類別的中文標籤。類別由 App 自報、後端不設白名單，未知類別直接顯示原名。
+     * 已知類別的中文標籤，順序即類別篩選列的順序。類別由 App 自報、後端不設
+     * 白名單，未知類別直接顯示原名。
+     *
+     * `tap` 涵蓋所有觸控輸入（事件名稱 `tap`／`drag`／`hold`／`activate`），
+     * 所以標成「觸控」而非「點擊」。
      *
      * @var array<string, string>
      */
     public const CATEGORY_LABELS = [
         'app' => '應用程式',
         'nav' => '頁面',
-        'tap' => '點擊',
+        'tap' => '觸控',
+        'ui' => '介面狀態',
         'auth' => '授權',
         'content' => '教材來源',
+        'media' => '音訊影片',
+        'game' => '遊戲',
         'net' => '網路',
+        'log' => '內部紀錄',
         'error' => '錯誤',
     ];
 

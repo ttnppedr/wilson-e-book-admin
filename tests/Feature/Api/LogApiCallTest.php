@@ -239,7 +239,7 @@ test('diagnostics upload logs a summary instead of the whole event batch', funct
         'fingerprint_prefix' => '9312d107',
         'events_count' => 50,
     ], $entry['request']);
-    $this->assertSame(['success' => true, 'accepted' => 50], $entry['response']);
+    $this->assertSame(['success' => true, 'accepted' => 50, 'recognized' => true], $entry['response']);
 });
 
 test('a rejected diagnostics upload is summarised too', function () use ($lastLogEntry): void {

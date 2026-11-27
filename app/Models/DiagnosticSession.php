@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Database\Factories\DiagnosticSessionFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -92,6 +93,47 @@ class DiagnosticSession extends Model
     public function events(): HasMany
     {
         return $this->hasMany(DiagnosticEvent::class);
+    }
+
+    /**
+     * 同一台裝置（同指紋）在這個 session 之前的那一個。
+     *
+     * 現場第一個動作通常是重開 App，一個問題會跨好幾個 session，檢視頁要能順著
+     * 往前後翻。依 `started_at` 排序、相同時以 id 決定，順序才穩定。
+     */
+    public function previousOnSameDevice(): ?self
+    {
+        return $this->neighborOnSameDevice('<', 'desc');
+    }
+
+    /**
+     * 同一台裝置（同指紋）在這個 session 之後的那一個，排序規則同上。
+     */
+    public function nextOnSameDevice(): ?self
+    {
+        return $this->neighborOnSameDevice('>', 'asc');
+    }
+
+    /**
+     * @param  '<'|'>'  $operator
+     * @param  'asc'|'desc'  $direction
+     */
+    private function neighborOnSameDevice(string $operator, string $direction): ?self
+    {
+        // 以 model 的毫秒格式比較；直接丟 Carbon 進 where 會被 grammar 格式化成
+        // 整秒，同一秒內開始的兩個 session 就分不出先後。
+        $startedAt = $this->fromDateTime($this->started_at);
+
+        return static::query()
+            ->where('fingerprint', $this->fingerprint)
+            ->where(fn (Builder $query): Builder => $query
+                ->where('started_at', $operator, $startedAt)
+                ->orWhere(fn (Builder $query): Builder => $query
+                    ->where('started_at', $startedAt)
+                    ->where($this->getKeyName(), $operator, $this->getKey())))
+            ->orderBy('started_at', $direction)
+            ->orderBy($this->getKeyName(), $direction)
+            ->first();
     }
 
     /**

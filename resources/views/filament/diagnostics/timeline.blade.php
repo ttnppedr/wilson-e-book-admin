@@ -14,7 +14,6 @@
     所以數千列也不需要逐列綁定，也不會觸發 Livewire 往返。
 --}}
 @php
-    $knownCategories = array_keys(\App\Services\DiagnosticTimelineBuilder::CATEGORY_LABELS);
     $hasTap = collect($categories)->contains('key', 'tap');
 @endphp
 
@@ -85,13 +84,20 @@
             --diag-warning-text: var(--warning-400);
         }
 
-        /* 類別色標。Filament 只有六組語意色，授權與網路另給固定色相（中等明度，亮暗主題皆可辨識）。 */
+        /*
+            類別色標。Filament 只有六組語意色，其餘類別另給固定色相（中等明度，亮暗主題皆可辨識），
+            色相避開語意色與彼此；觸控與內部紀錄量大、多半是背景雜訊，刻意用灰階壓低存在感。
+        */
         .diag-cat-app { --diag-c: var(--gray-500); }
         .diag-cat-nav { --diag-c: var(--info-500); }
         .diag-cat-tap { --diag-c: var(--gray-400); }
+        .diag-cat-ui { --diag-c: oklch(0.704 0.14 182.503); }
         .diag-cat-auth { --diag-c: oklch(0.606 0.25 292.717); }
         .diag-cat-content { --diag-c: var(--success-500); }
+        .diag-cat-media { --diag-c: oklch(0.656 0.241 354.308); }
+        .diag-cat-game { --diag-c: oklch(0.768 0.233 130.85); }
         .diag-cat-net { --diag-c: oklch(0.715 0.143 215.221); }
+        .diag-cat-log { --diag-c: var(--gray-300); }
         .diag-cat-error { --diag-c: var(--danger-500); }
         .diag-cat-other { --diag-c: var(--primary-500); }
 
@@ -436,7 +442,7 @@
                         x-bind:aria-pressed="isHidden('tap').toString()"
                     >
                         <span class="diag-dot"></span>
-                        <span>隱藏點擊事件</span>
+                        <span>隱藏觸控事件</span>
                     </button>
                 @endif
 

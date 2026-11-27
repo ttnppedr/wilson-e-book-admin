@@ -36,6 +36,14 @@ class DiagnosticsController extends Controller
      * 這是個免驗證的寫入端點，所以只保存「指紋對得上既有席位」的資料，其餘照樣
      * 回 202（`accepted: 0`）。
      *
+     * 回應固定為 `202 {success: true, accepted: int, recognized: bool}`：
+     *   - `accepted`：這次實際新寫入的筆數（重送的事件不算）。
+     *   - `recognized`：指紋找得到席位時為 true（含已儲存、整批重送、session 已
+     *     綁定別的指紋）；找不到時為 false。`accepted: 0` 本身分不出「整批重送」
+     *     與「不認得」，App 要靠這個欄位決定能不能刪掉本機紀錄——席位在後台被
+     *     刪除後，App 若照樣當成已送達，該裝置的紀錄就會全部消失。
+     *   ⚠️ 欄位名稱與語意是與 App 約定的合約，不可改名。
+     *
      * 驗證分兩段：先驗頂層欄位並查指紋，指紋對不上就直接回 202，**不驗事件內容**。
      * 逐筆驗證 500 筆事件是這支端點最貴的一步（實測 0.2–1 秒），而節流鍵含呼叫端
      * 自填的指紋、換個指紋就有新額度，所以不能讓陌生指紋付得起這個成本。
@@ -148,6 +156,7 @@ class DiagnosticsController extends Controller
         return response()->json([
             'success' => true,
             'accepted' => $result->accepted,
+            'recognized' => $result->recognized(),
         ], 202);
     }
 

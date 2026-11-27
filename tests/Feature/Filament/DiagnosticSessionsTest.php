@@ -214,6 +214,85 @@ test('view page renders the summary and the timeline', function () use ($makeLic
         ->assertSee('跳到第一個錯誤');
 });
 
+test('every known category has its own label and colour on the timeline', function () use ($addEvents): void {
+    $session = DiagnosticSession::factory()->create();
+    $categories = array_keys(DiagnosticTimelineBuilder::CATEGORY_LABELS);
+    $addEvents($session, array_map(
+        fn (int $index, string $category): array => ['seq' => $index, 'category' => $category, 'name' => "event_{$category}"],
+        array_keys($categories),
+        $categories,
+    ));
+
+    $html = Livewire::test(ViewDiagnosticSession::class, ['record' => $session->getKey()])
+        ->assertOk()
+        ->assertSeeInOrder(['介面狀態', '音訊影片', '遊戲', '內部紀錄'])
+        ->html();
+
+    foreach ($categories as $category) {
+        // 少了色標規則，該類別會靜默落回預設灰，與觸控事件混在一起。
+        $this->assertStringContainsString(".diag-cat-{$category} {", $html, "類別 {$category} 沒有色標樣式");
+        $this->assertStringContainsString("diag-row diag-cat-{$category}\"", $html);
+    }
+    $this->assertStringNotContainsString('diag-row diag-cat-other', $html);
+});
+
+test('every kind of touch event is covered by the hide-touch switch', function () use ($addEvents): void {
+    $session = DiagnosticSession::factory()->create();
+    $addEvents($session, [
+        ['seq' => 1, 'category' => 'tap', 'name' => 'tap'],
+        ['seq' => 2, 'category' => 'tap', 'name' => 'drag'],
+        ['seq' => 3, 'category' => 'tap', 'name' => 'hold'],
+        ['seq' => 4, 'category' => 'tap', 'name' => 'activate'],
+        ['seq' => 5, 'category' => 'app', 'name' => 'previous_exit', 'level' => 'warn'],
+    ]);
+
+    $html = Livewire::test(ViewDiagnosticSession::class, ['record' => $session->getKey()])
+        ->assertOk()
+        ->assertSee('隱藏觸控事件')
+        ->html();
+
+    // 開關隱藏的是整個 tap 類別（CSS 依 data-cat 隱藏），不看事件名稱。
+    $this->assertSame(4, substr_count($html, 'data-cat="tap"'));
+    $this->assertStringContainsString('.diag-hide-tap .diag-row[data-cat=\'tap\']', $html);
+    $this->assertSame(1, substr_count($html, 'data-cat="app"'));
+});
+
+test('the view page links to the previous and next session of the same device', function () use ($at): void {
+    $session = fn (string $fingerprint, string $startedAt): DiagnosticSession => DiagnosticSession::factory()->create([
+        'fingerprint' => $fingerprint,
+        'started_at' => $at($startedAt),
+    ]);
+    $device = '9312d107016e2503';
+
+    $first = $session($device, '2026-11-27 09:00:00.000');
+    // 先建立但開始得較晚：排序看 started_at，不是 id。
+    $third = $session($device, '2026-11-27 10:00:00.900');
+    // 與 $third 同一秒：比較必須保留毫秒。
+    $second = $session($device, '2026-11-27 10:00:00.100');
+    // 與 $third 同一毫秒：以 id 決定先後。
+    $fourth = $session($device, '2026-11-27 10:00:00.900');
+    $session('ffffffffffffffff', '2026-11-27 09:30:00.000');
+
+    $url = fn (DiagnosticSession $record): string => DiagnosticSessionResource::getUrl('view', ['record' => $record]);
+
+    Livewire::test(ViewDiagnosticSession::class, ['record' => $first->getKey()])
+        ->assertActionDisabled('previousSession')
+        ->assertActionHasUrl('nextSession', $url($second));
+
+    Livewire::test(ViewDiagnosticSession::class, ['record' => $second->getKey()])
+        ->assertActionHasUrl('previousSession', $url($first))
+        ->assertActionHasUrl('nextSession', $url($third));
+
+    Livewire::test(ViewDiagnosticSession::class, ['record' => $third->getKey()])
+        ->assertActionHasUrl('previousSession', $url($second))
+        ->assertActionHasUrl('nextSession', $url($fourth));
+
+    Livewire::test(ViewDiagnosticSession::class, ['record' => $fourth->getKey()])
+        ->assertActionEnabled('previousSession')
+        ->assertActionHasUrl('previousSession', $url($third))
+        ->assertActionDisabled('nextSession');
+});
+
 test('event content from the device is escaped on the view page', function () use ($addEvents): void {
     $session = DiagnosticSession::factory()->create([
         'device_model' => '<script>alert("model")</script>',

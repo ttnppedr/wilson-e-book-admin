@@ -3,12 +3,16 @@
 namespace App\Filament\Resources\DiagnosticSessions\Pages;
 
 use App\Filament\Resources\DiagnosticSessions\DiagnosticSessionResource;
+use App\Models\DiagnosticSession;
 use App\Services\DiagnosticTimelineBuilder;
+use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\ViewRecord;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\View;
 use Filament\Schemas\Schema;
+use Filament\Support\Icons\Heroicon;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 
 class ViewDiagnosticSession extends ViewRecord
@@ -54,7 +58,37 @@ class ViewDiagnosticSession extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
+            $this->sameDeviceAction('previousSession', '同裝置上一個 session', Heroicon::OutlinedChevronLeft, $this->previousSession, '這台裝置沒有更早的 session'),
+            $this->sameDeviceAction('nextSession', '同裝置下一個 session', Heroicon::OutlinedChevronRight, $this->nextSession, '這台裝置沒有更晚的 session'),
             DeleteAction::make(),
         ];
+    }
+
+    #[Computed]
+    public function previousSession(): ?DiagnosticSession
+    {
+        return $this->getRecord()->previousOnSameDevice();
+    }
+
+    #[Computed]
+    public function nextSession(): ?DiagnosticSession
+    {
+        return $this->getRecord()->nextOnSameDevice();
+    }
+
+    /**
+     * 沒有前後 session 時維持停用而不隱藏，兩顆按鈕的位置才不會跟著跳。
+     */
+    private function sameDeviceAction(string $name, string $label, Heroicon $icon, ?DiagnosticSession $target, string $missingTooltip): Action
+    {
+        return Action::make($name)
+            ->label($label)
+            ->icon($icon)
+            ->color('gray')
+            ->url($target === null ? null : DiagnosticSessionResource::getUrl('view', ['record' => $target]))
+            ->disabled($target === null)
+            ->tooltip($target === null
+                ? $missingTooltip
+                : '開始於 '.$target->started_at->copy()->setTimezone(DiagnosticTimelineBuilder::DISPLAY_TIMEZONE)->format('Y-m-d H:i:s').'（裝置時間）');
     }
 }

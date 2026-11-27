@@ -94,7 +94,7 @@ test('stores the session and its events and links them to the known device', fun
     ]));
 
     $response->assertStatus(202);
-    $response->assertExactJson(['success' => true, 'accepted' => 3]);
+    $response->assertExactJson(['success' => true, 'accepted' => 3, 'recognized' => true]);
 
     $session = DiagnosticSession::query()->sole();
     $this->assertSame($sessionId, $session->session_uuid);
@@ -149,7 +149,8 @@ test('resending the same batch does not write duplicates or inflate the counters
     $batch = $payload([$event(1), $event(2, ['level' => 'error', 'name' => 'boom'])]);
 
     $this->postJson($url, $batch)->assertStatus(202)->assertJsonPath('accepted', 2);
-    $this->postJson($url, $batch)->assertStatus(202)->assertJsonPath('accepted', 0);
+    // 整批重送與「指紋不認得」同樣是 accepted 0，App 只能靠 recognized 分辨。
+    $this->postJson($url, $batch)->assertStatus(202)->assertExactJson(['success' => true, 'accepted' => 0, 'recognized' => true]);
 
     // 部分重疊：只有 seq 3 是新的。
     $this->postJson($url, $payload([$event(2, ['level' => 'error', 'name' => 'boom']), $event(3)]))
@@ -166,9 +167,22 @@ test('an unknown fingerprint is answered with 202 but nothing is stored', functi
     $response = $this->postJson($url, $payload([$event(1)]));
 
     $response->assertStatus(202);
-    $response->assertExactJson(['success' => true, 'accepted' => 0]);
+    $response->assertExactJson(['success' => true, 'accepted' => 0, 'recognized' => false]);
     $this->assertSame(0, DiagnosticSession::query()->count());
     $this->assertSame(0, DiagnosticEvent::query()->count());
+});
+
+test('a device whose usage was deleted is told it is no longer recognized', function () use ($url, $fingerprint, $makeUsage, $event, $payload): void {
+    $usage = $makeUsage($fingerprint);
+    $this->postJson($url, $payload([$event(1)]))->assertExactJson(['success' => true, 'accepted' => 1, 'recognized' => true]);
+
+    $usage->delete();
+
+    // 同一個 session 的下一批：App 必須知道沒人收下，不能把本機紀錄當成已送達刪掉。
+    $this->postJson($url, $payload([$event(2)]))
+        ->assertStatus(202)
+        ->assertExactJson(['success' => true, 'accepted' => 0, 'recognized' => false]);
+    $this->assertSame(1, DiagnosticEvent::query()->count());
 });
 
 test('another device cannot append events to an existing session', function () use ($url, $fingerprint, $makeUsage, $event, $payload): void {
@@ -177,9 +191,10 @@ test('another device cannot append events to an existing session', function () u
 
     $this->postJson($url, $payload([$event(1)]))->assertJsonPath('accepted', 1);
 
+    // 指紋本身認得，只是不屬於這個 session：不是「沒人收」，recognized 仍為 true。
     $this->postJson($url, $payload([$event(2)], ['fingerprint' => 'ffffffffffffffff']))
         ->assertStatus(202)
-        ->assertJsonPath('accepted', 0);
+        ->assertExactJson(['success' => true, 'accepted' => 0, 'recognized' => true]);
 
     $this->assertSame(1, DiagnosticEvent::query()->count());
 });
@@ -207,7 +222,7 @@ test('the app request without accept header and with a stray bearer is accepted'
     ], json_encode($payload([$event(1)]), JSON_THROW_ON_ERROR));
 
     $response->assertStatus(202);
-    $response->assertExactJson(['success' => true, 'accepted' => 1]);
+    $response->assertExactJson(['success' => true, 'accepted' => 1, 'recognized' => true]);
 });
 
 test('optional fields may be omitted and an empty env is accepted', function () use ($url, $fingerprint, $makeUsage, $event, $payload): void {
@@ -335,7 +350,7 @@ test('an unknown fingerprint is answered before the events are validated', funct
     $response = $this->postJson($url, $payload([$event(1, ['level' => 'fatal', 'cat' => 'NOT VALID'])]));
 
     $response->assertStatus(202);
-    $response->assertExactJson(['success' => true, 'accepted' => 0]);
+    $response->assertExactJson(['success' => true, 'accepted' => 0, 'recognized' => false]);
 });
 
 test('the server receive time is kept next to the device time', function () use ($url, $fingerprint, $makeUsage, $event, $payload): void {
