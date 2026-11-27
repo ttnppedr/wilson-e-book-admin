@@ -28,7 +28,6 @@ return new class extends Migration
             $table->dateTime('received_at', 3);
 
             $table->unique(['diagnostic_session_id', 'seq'], 'diagnostic_events_session_seq_unique');
-            $table->index(['diagnostic_session_id', 'occurred_at'], 'diagnostic_events_session_occurred_index');
         });
     }
 

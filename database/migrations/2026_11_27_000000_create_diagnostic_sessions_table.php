@@ -31,6 +31,9 @@ return new class extends Migration
             $table->dateTime('started_at', 3);
             $table->dateTime('first_event_at', 3)->nullable();
             $table->dateTime('last_event_at', 3)->nullable()->index();
+            // first/last_event_at 是裝置自報的時間（時鐘可能不準）；這欄是伺服器
+            // 最後一次收到上傳的時間，清單排序與保留期清除都以它為準。
+            $table->dateTime('last_received_at', 3)->index();
             $table->unsignedInteger('event_count')->default(0);
             $table->unsignedInteger('warn_count')->default(0);
             $table->unsignedInteger('error_count')->default(0);

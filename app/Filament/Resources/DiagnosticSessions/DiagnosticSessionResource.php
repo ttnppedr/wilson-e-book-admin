@@ -98,10 +98,13 @@ class DiagnosticSessionResource extends Resource
                                 trim($record->platform.' '.($record->os_version ?? '')),
                             ]))),
                         TextEntry::make('started_at')
-                            ->label('開始時間')
+                            ->label('開始時間（裝置）')
                             ->dateTime(self::DATE_TIME_FORMAT, DiagnosticTimelineBuilder::DISPLAY_TIMEZONE),
                         TextEntry::make('last_event_at')
-                            ->label('最後事件時間')
+                            ->label('最後事件時間（裝置）')
+                            ->dateTime(self::DATE_TIME_FORMAT, DiagnosticTimelineBuilder::DISPLAY_TIMEZONE),
+                        TextEntry::make('last_received_at')
+                            ->label('最後上傳時間（伺服器）')
                             ->dateTime(self::DATE_TIME_FORMAT, DiagnosticTimelineBuilder::DISPLAY_TIMEZONE),
                         TextEntry::make('duration')
                             ->label('持續時間')
@@ -133,8 +136,12 @@ class DiagnosticSessionResource extends Resource
     {
         return $table
             ->columns([
+                TextColumn::make('last_received_at')
+                    ->label('最後上傳時間（伺服器）')
+                    ->dateTime(self::DATE_TIME_FORMAT, DiagnosticTimelineBuilder::DISPLAY_TIMEZONE)
+                    ->sortable(),
                 TextColumn::make('last_event_at')
-                    ->label('最後事件時間')
+                    ->label('最後事件時間（裝置）')
                     ->dateTime(self::DATE_TIME_FORMAT, DiagnosticTimelineBuilder::DISPLAY_TIMEZONE)
                     ->sortable(),
                 TextColumn::make('license.name')
@@ -203,8 +210,8 @@ class DiagnosticSessionResource extends Resource
                         : null),
                 Filter::make('last_event_at')
                     ->schema([
-                        DatePicker::make('from')->label('最後事件時間（起）'),
-                        DatePicker::make('until')->label('最後事件時間（迄）'),
+                        DatePicker::make('from')->label('最後事件時間（裝置，起）'),
+                        DatePicker::make('until')->label('最後事件時間（裝置，迄）'),
                     ])
                     ->query(fn (Builder $query, array $data): Builder => $query
                         ->when(
@@ -226,7 +233,8 @@ class DiagnosticSessionResource extends Resource
                 ViewAction::make()->label('時間軸'),
                 DeleteAction::make(),
             ])
-            ->defaultSort('last_event_at', 'desc');
+            // 裝置時鐘可能不準（甚至在未來），預設依伺服器收到的時間排序。
+            ->defaultSort('last_received_at', 'desc');
     }
 
     public static function getPages(): array

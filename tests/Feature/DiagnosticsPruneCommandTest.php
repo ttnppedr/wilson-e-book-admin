@@ -7,9 +7,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-$makeSession = function (int $daysSinceLastEvent): DiagnosticSession {
+/**
+ * @param  array<string, mixed>  $attributes
+ */
+$makeSession = function (int $daysSinceLastUpload, array $attributes = []): DiagnosticSession {
     $session = DiagnosticSession::factory()->create([
-        'last_event_at' => now()->subDays($daysSinceLastEvent),
+        'last_received_at' => now()->subDays($daysSinceLastUpload),
+        ...$attributes,
     ]);
 
     DiagnosticEvent::factory()->count(2)->create(['diagnostic_session_id' => $session->getKey()]);
@@ -17,9 +21,9 @@ $makeSession = function (int $daysSinceLastEvent): DiagnosticSession {
     return $session;
 };
 
-test('sessions whose last event is older than 30 days are deleted with their events', function () use ($makeSession): void {
-    $expired = $makeSession(31);
-    $kept = $makeSession(29);
+test('sessions last uploaded more than three months ago are deleted with their events', function () use ($makeSession): void {
+    $expired = $makeSession(91);
+    $kept = $makeSession(89);
 
     $this->artisan('diagnostics:prune')->assertSuccessful();
 
@@ -27,6 +31,18 @@ test('sessions whose last event is older than 30 days are deleted with their eve
     $this->assertModelExists($kept);
     $this->assertSame(0, DiagnosticEvent::query()->where('diagnostic_session_id', $expired->getKey())->count());
     $this->assertSame(2, DiagnosticEvent::query()->where('diagnostic_session_id', $kept->getKey())->count());
+});
+
+test('retention follows the server receive time and ignores the device clock', function () use ($makeSession): void {
+    // 裝置時鐘停在過去：昨天才上傳，不能因為事件時間是 2001 年就被清掉。
+    $clockInThePast = $makeSession(1, ['last_event_at' => '2001-01-01 00:00:00']);
+    // 裝置時鐘在未來：早就超過保留期，不能因為事件時間是 2099 年就永遠留著。
+    $clockInTheFuture = $makeSession(120, ['last_event_at' => '2099-01-01 00:00:00']);
+
+    $this->artisan('diagnostics:prune')->assertSuccessful();
+
+    $this->assertModelExists($clockInThePast);
+    $this->assertModelMissing($clockInTheFuture);
 });
 
 test('the retention period can be changed with the days option', function () use ($makeSession): void {

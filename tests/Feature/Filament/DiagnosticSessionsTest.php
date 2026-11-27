@@ -62,12 +62,15 @@ test('list shows sessions newest first with their license', function () use ($ma
     $license = $makeLicense('光復國小');
     $older = DiagnosticSession::factory()->create([
         'license_id' => $license->getKey(),
-        'last_event_at' => $at('2026-11-26 23:00:00'),
+        // 裝置時鐘在未來：排序看的是伺服器收到的時間，不能因此排到最前面。
+        'last_event_at' => $at('2099-01-01 00:00:00'),
+        'last_received_at' => $at('2026-11-26 23:00:00'),
     ]);
     $newer = DiagnosticSession::factory()->create([
         'license_id' => $license->getKey(),
         'first_event_at' => $at('2026-11-27 00:55:00'),
         'last_event_at' => $at('2026-11-27 01:05:30'),
+        'last_received_at' => $at('2026-11-27 01:06:00'),
         'error_count' => 3,
         'last_error_name' => 'content_load_failed',
     ]);
@@ -80,6 +83,7 @@ test('list shows sessions newest first with their license', function () use ($ma
         ->assertSee('content_load_failed')
         // 時間以台灣時間顯示（UTC+8）。
         ->assertSee('2026-11-27 09:05:30')
+        ->assertSee('2026-11-27 09:06:00')
         ->assertSee('10 分 30 秒')
         ->assertSee(LicenseResource::getUrl('view', ['record' => $license->getKey()]));
 });

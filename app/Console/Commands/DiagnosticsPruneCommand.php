@@ -10,7 +10,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
-#[Signature('diagnostics:prune {--days=30 : 保留天數，最後事件早於此天數的 session 會被刪除}')]
+#[Signature('diagnostics:prune {--days=90 : 保留天數，伺服器最後收到上傳早於此天數的 session 會被刪除}')]
 #[Description('清除超過保留期的 App 診斷紀錄（session 連同事件）。')]
 class DiagnosticsPruneCommand extends Command
 {
@@ -30,10 +30,13 @@ class DiagnosticsPruneCommand extends Command
         $cutoff = now()->subDays($days);
         $deletedSessions = 0;
 
+        // 以伺服器收到的時間（last_received_at）判斷，不看裝置自報的 last_event_at：
+        // 時鐘停在過去的裝置會讓紀錄隔天就被清掉，時鐘在未來的則永遠清不掉。
+        //
         // 診斷紀錄不是 audit 對象，可以批次刪除。事件明確先刪，不依賴 DB 的
         // ON DELETE CASCADE（SQLite 需連線開啟 foreign key 才會生效）。
         DiagnosticSession::query()
-            ->where('last_event_at', '<', $cutoff)
+            ->where('last_received_at', '<', $cutoff)
             ->select('id')
             ->chunkById(self::CHUNK_SIZE, function (Collection $sessions) use (&$deletedSessions): void {
                 $ids = $sessions->modelKeys();

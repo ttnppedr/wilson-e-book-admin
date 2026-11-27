@@ -30,6 +30,7 @@ class DiagnosticSessionFactory extends Factory
             'started_at' => $startedAt,
             'first_event_at' => $startedAt,
             'last_event_at' => $startedAt->copy()->addMinutes(5),
+            'last_received_at' => now(),
             'event_count' => 0,
             'warn_count' => 0,
             'error_count' => 0,

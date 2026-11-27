@@ -49,7 +49,7 @@ class DiagnosticDemoSeeder extends Seeder
                 'model' => 'MeetBoard_4',
             ],
             'events' => $this->buildEvents($startedAt),
-        ], '127.0.0.1');
+        ], $usage, '127.0.0.1')->accepted;
 
         $session = DiagnosticSession::query()->where('session_uuid', $sessionId)->sole();
 

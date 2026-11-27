@@ -120,6 +120,7 @@ class DiagnosticTimelineBuilder
                 'type' => 'event',
                 'seq' => $event->seq,
                 'time' => $occurredAt->format('H:i:s.v'),
+                'receivedAt' => $event->received_at->copy()->setTimezone(self::DISPLAY_TIMEZONE)->format('Y-m-d H:i:s.v'),
                 'delta' => $deltaMs === null ? null : $this->formatDelta($deltaMs),
                 'deltaIsLong' => $deltaMs !== null && abs($deltaMs) >= self::LONG_DELTA_SECONDS * 1000,
                 'category' => $category,

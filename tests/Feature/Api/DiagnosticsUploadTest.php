@@ -329,3 +329,83 @@ test('uploads are rate limited per ip and fingerprint', function () use ($url, $
     // 複合鍵含指紋：別的裝置不受影響。
     $post('another-device', 1)->assertStatus(202);
 });
+
+test('an unknown fingerprint is answered before the events are validated', function () use ($url, $event, $payload): void {
+    // 逐筆驗證事件是最貴的一步，陌生指紋不該付得起：事件內容無效也照樣回 202。
+    $response = $this->postJson($url, $payload([$event(1, ['level' => 'fatal', 'cat' => 'NOT VALID'])]));
+
+    $response->assertStatus(202);
+    $response->assertExactJson(['success' => true, 'accepted' => 0]);
+});
+
+test('the server receive time is kept next to the device time', function () use ($url, $fingerprint, $makeUsage, $event, $payload): void {
+    $makeUsage($fingerprint);
+    $this->travelTo('2026-11-27 12:00:00.500');
+
+    // 裝置時鐘停在 2001 年。
+    $this->postJson($url, $payload([$event(1, ['t' => '2001-01-01T00:00:05.000Z'])]))->assertJsonPath('accepted', 1);
+
+    $session = DiagnosticSession::query()->sole();
+    $this->assertSame('2001-01-01', $session->last_event_at->utc()->format('Y-m-d'));
+    $this->assertSame(now()->format('Y-m-d H:i:s.v'), $session->last_received_at->format('Y-m-d H:i:s.v'));
+    $this->assertSame(now()->format('Y-m-d H:i:s.v'), $session->events()->sole()->received_at->format('Y-m-d H:i:s.v'));
+
+    $this->travelTo('2026-11-28 08:00:00');
+    $this->postJson($url, $payload([$event(2, ['t' => '2001-01-01T00:00:06.000Z'])]))->assertJsonPath('accepted', 1);
+
+    $this->assertSame('2026-11-28 08:00:00', $session->refresh()->last_received_at->format('Y-m-d H:i:s'));
+});
+
+test('every upload outcome is written to the api log with its reason', function () use ($url, $fingerprint, $sessionId, $makeUsage, $event, $payload): void {
+    $logPath = storage_path('logs/testing-diagnostics-'.getmypid().'.log');
+    config(['logging.channels.api' => ['driver' => 'single', 'path' => $logPath, 'level' => 'info']]);
+    @unlink($logPath);
+
+    $usage = $makeUsage($fingerprint);
+    $makeUsage('ffffffffffffffff');
+
+    $this->postJson($url, $payload([$event(1)], ['fingerprint' => 'aaaaaaaaaaaaaaaa']));
+    $this->postJson($url, $payload([$event(1), $event(2, ['data' => ['blob' => str_repeat('x', DiagnosticRecorder::MAX_DATA_BYTES)]])]));
+    $this->postJson($url, $payload([$event(1), $event(2), $event(3)]));
+    $this->postJson($url, $payload([$event(1), $event(2)]));
+    $this->postJson($url, $payload([$event(9)], ['fingerprint' => 'ffffffffffffffff']));
+
+    $entries = [];
+    foreach (explode("\n", trim((string) file_get_contents($logPath))) as $line) {
+        if (str_contains($line, '[api] diagnostics upload')) {
+            $entries[] = json_decode(substr($line, strpos($line, '{')), true, flags: JSON_THROW_ON_ERROR);
+        }
+    }
+    @unlink($logPath);
+
+    $this->assertSame(
+        ['unknown_fingerprint', 'stored', 'stored', 'duplicate_only', 'fingerprint_mismatch'],
+        array_column($entries, 'outcome'),
+    );
+
+    $this->assertSame([
+        'outcome' => 'unknown_fingerprint',
+        'session_id' => $sessionId,
+        'fingerprint_prefix' => 'aaaaaaaa',
+        'accepted' => 0,
+        'received' => 1,
+    ], $entries[0]);
+    $this->assertSame([
+        'outcome' => 'stored',
+        'session_id' => $sessionId,
+        'fingerprint_prefix' => '9312d107',
+        'accepted' => 2,
+        'diagnostic_session_id' => DiagnosticSession::query()->sole()->getKey(),
+        'license_id' => $usage->license_id,
+        'license_usage_id' => $usage->getKey(),
+        'received' => 2,
+        'seq_min' => 1,
+        'seq_max' => 2,
+        'duplicates' => 0,
+        'truncated' => 1,
+    ], $entries[1]);
+    $this->assertSame([1, 2, 3], [$entries[2]['accepted'], $entries[2]['duplicates'], $entries[2]['received']]);
+    $this->assertSame([0, 2], [$entries[3]['accepted'], $entries[3]['duplicates']]);
+    $this->assertSame('9312d107', $entries[4]['bound_fingerprint_prefix']);
+    $this->assertSame('ffffffff', $entries[4]['fingerprint_prefix']);
+});

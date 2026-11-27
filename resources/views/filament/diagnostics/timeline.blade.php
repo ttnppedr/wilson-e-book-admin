@@ -519,7 +519,7 @@
                         role="listitem"
                         wire:key="diag-event-{{ $row['seq'] }}"
                     >
-                        <div class="diag-time">{{ $row['time'] }}</div>
+                        <div class="diag-time" title="裝置時間；伺服器收到：{{ $row['receivedAt'] }}">{{ $row['time'] }}</div>
                         <div @class(['diag-delta', 'diag-delta-long' => $row['deltaIsLong']]) title="與上一筆事件的間隔">{{ $row['delta'] }}</div>
                         <div class="diag-cat">
                             <span class="diag-dot"></span>

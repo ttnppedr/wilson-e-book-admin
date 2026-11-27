@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\DB;
  * 把 App 上傳的一批診斷事件寫入資料庫。
  *
  * 上傳端點免驗證，所以這裡有三道限制，缺一就會變成任意寫入口：
- *   1. 指紋必須對得上既有的 LicenseUsage，否則整批丟棄。
+ *   1. 指紋必須對得上既有的 LicenseUsage，否則整批丟棄（由呼叫端先以
+ *      `findUsage()` 確認，對不上就不必驗證、也不必處理整批事件）。
  *   2. session 一旦建立就綁定建立時的指紋，別的指紋不能往裡面追加事件。
  *   3. 單筆 data 超過上限就換成 `{"_truncated": true}`。
  */
@@ -23,6 +24,8 @@ class DiagnosticRecorder
 
     private const DATE_FORMAT = 'Y-m-d H:i:s.v';
 
+    private const TRUNCATED_DATA = '{"_truncated":true}';
+
     /**
      * @param  array{
      *     fingerprint: string,
@@ -31,19 +34,14 @@ class DiagnosticRecorder
      *     app: array{version: string, env?: string|null, platform: string, os_version?: string|null, model?: string|null},
      *     events: list<array{seq: int|string, t: string, cat: string, name: string, level: string, data?: array<array-key, mixed>|null}>
      * }  $payload  已通過驗證的請求內容
-     * @return int 實際新寫入的事件筆數
+     * @param  LicenseUsage  $usage  `findUsage()` 以該指紋找到的席位
      */
-    public function record(array $payload, ?string $ip): int
+    public function record(array $payload, LicenseUsage $usage, ?string $ip): DiagnosticUploadResult
     {
-        $usage = $this->findUsage($payload['fingerprint']);
+        $receivedAt = now()->format(self::DATE_FORMAT);
+        $rows = $this->buildEventRows($payload['events'], $receivedAt);
 
-        if ($usage === null) {
-            return 0;
-        }
-
-        $rows = $this->buildEventRows($payload['events']);
-
-        return DB::transaction(function () use ($payload, $usage, $rows, $ip): int {
+        return DB::transaction(function () use ($payload, $usage, $rows, $receivedAt, $ip): DiagnosticUploadResult {
             $session = DiagnosticSession::query()->firstOrCreate(
                 ['session_uuid' => $payload['session_id']],
                 [
@@ -56,6 +54,7 @@ class DiagnosticRecorder
                     'os_version' => $payload['app']['os_version'] ?? null,
                     'device_model' => $payload['app']['model'] ?? null,
                     'started_at' => $this->toStoredTime($payload['started_at']),
+                    'last_received_at' => $receivedAt,
                     'ip' => $ip,
                 ],
             );
@@ -64,8 +63,20 @@ class DiagnosticRecorder
             // 依序處理，否則兩邊都會把同一批事件算進計數欄位。
             $session = DiagnosticSession::query()->lockForUpdate()->findOrFail($session->getKey());
 
+            $context = [
+                'diagnostic_session_id' => $session->getKey(),
+                'license_id' => $session->license_id,
+                'license_usage_id' => $session->license_usage_id,
+                'received' => count($payload['events']),
+                'seq_min' => min(array_keys($rows)),
+                'seq_max' => max(array_keys($rows)),
+            ];
+
             if ($session->fingerprint !== $payload['fingerprint']) {
-                return 0;
+                return new DiagnosticUploadResult(DiagnosticUploadResult::OUTCOME_FINGERPRINT_MISMATCH, 0, [
+                    ...$context,
+                    'bound_fingerprint_prefix' => substr($session->fingerprint, 0, 8),
+                ]);
             }
 
             $existingSeqs = DiagnosticEvent::query()
@@ -75,9 +86,10 @@ class DiagnosticRecorder
                 ->all();
 
             $newRows = array_diff_key($rows, array_flip($existingSeqs));
+            $context['duplicates'] = count($payload['events']) - count($newRows);
 
             if ($newRows === []) {
-                return 0;
+                return new DiagnosticUploadResult(DiagnosticUploadResult::OUTCOME_DUPLICATE_ONLY, 0, $context);
             }
 
             $accepted = DiagnosticEvent::query()->insertOrIgnore(array_map(
@@ -85,16 +97,19 @@ class DiagnosticRecorder
                 array_values($newRows),
             ));
 
-            $this->updateSessionSummary($session, $newRows, $ip);
+            $this->updateSessionSummary($session, $newRows, $receivedAt, $ip);
 
-            return $accepted;
+            return new DiagnosticUploadResult(DiagnosticUploadResult::OUTCOME_STORED, $accepted, [
+                ...$context,
+                'truncated' => count(array_filter($newRows, fn (array $row): bool => $row['data'] === self::TRUNCATED_DATA)),
+            ]);
         });
     }
 
     /**
      * 同一指紋可能掛在多張授權下（裝置重新啟用過別張授權），取最近有連線的那筆。
      */
-    private function findUsage(string $fingerprint): ?LicenseUsage
+    public function findUsage(string $fingerprint): ?LicenseUsage
     {
         return LicenseUsage::query()
             ->where('usage_fingerprint', $fingerprint)
@@ -109,9 +124,8 @@ class DiagnosticRecorder
      * @param  list<array{seq: int|string, t: string, cat: string, name: string, level: string, data?: array<array-key, mixed>|null}>  $events
      * @return array<int, array{seq: int, occurred_at: string, category: string, name: string, level: string, data: string|null, received_at: string}>
      */
-    private function buildEventRows(array $events): array
+    private function buildEventRows(array $events, string $receivedAt): array
     {
-        $receivedAt = now()->format(self::DATE_FORMAT);
         $rows = [];
 
         foreach ($events as $event) {
@@ -143,7 +157,7 @@ class DiagnosticRecorder
         $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         if ($json === false || strlen($json) > self::MAX_DATA_BYTES) {
-            return '{"_truncated":true}';
+            return self::TRUNCATED_DATA;
         }
 
         return $json;
@@ -165,7 +179,7 @@ class DiagnosticRecorder
      *
      * @param  array<int, array{seq: int, occurred_at: string, category: string, name: string, level: string, data: string|null, received_at: string}>  $newRows
      */
-    private function updateSessionSummary(DiagnosticSession $session, array $newRows, ?string $ip): void
+    private function updateSessionSummary(DiagnosticSession $session, array $newRows, string $receivedAt, ?string $ip): void
     {
         $levels = array_count_values(array_column($newRows, 'level'));
         $occurredAt = array_column($newRows, 'occurred_at');
@@ -181,6 +195,7 @@ class DiagnosticRecorder
         $session->error_count += $levels['error'] ?? 0;
         $session->first_event_at = $currentFirst === null ? $earliest : min($currentFirst, $earliest);
         $session->last_event_at = $currentLast === null ? $latest : max($currentLast, $latest);
+        $session->last_received_at = $receivedAt;
         $session->ip = $ip;
 
         if (isset($levels['error'])) {
